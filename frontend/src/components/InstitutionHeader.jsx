@@ -3,30 +3,20 @@ import React from 'react';
 export default function InstitutionHeader() {
   return (
     <div className="institution-header">
-      {/* LEFT: Official Vignan's University Logo Lockup (with shield crest from reference) */}
+      {/* LEFT TOPMOST CORNER: Official Vignan's University Logo */}
       <div className="inst-left">
         <img
           src="/vignan-logo.svg"
-          alt="VIGNAN'S Foundation for Science, Technology & Research"
+          alt="VIGNAN'S Foundation for Science, Technology & Research (Deemed to be University)"
           className="vignan-logo-img"
           style={{
-            height: '48px',
+            height: '52px',
             width: 'auto',
-            maxWidth: '300px',
+            maxWidth: '340px',
             objectFit: 'contain',
             display: 'block',
           }}
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = '/vignan-logo.svg';
-          }}
         />
-      </div>
-
-      {/* CENTER: Exactly matching screenshot: CSE PRESENTS | AGENTIC AI DAY 2026 (No extra subtitle) */}
-      <div className="inst-center">
-        <div className="inst-label">CSE PRESENTS</div>
-        <div className="inst-title">AGENTIC AI DAY 2026</div>
       </div>
 
       {/* RIGHT: Row of 7 Official Accreditation Circular Badges (Exact to Reference) */}
