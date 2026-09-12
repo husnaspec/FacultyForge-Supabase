@@ -6,11 +6,11 @@ export default function InstitutionHeader() {
       {/* LEFT TOPMOST CORNER: Official Vignan's University Logo */}
       <div className="inst-left">
         <img
-          src="/vignan-logo.svg"
+          src="/vignan-university-logo.png"
           alt="VIGNAN'S Foundation for Science, Technology & Research (Deemed to be University)"
           className="vignan-logo-img"
           style={{
-            height: '52px',
+            height: '48px',
             width: 'auto',
             maxWidth: '340px',
             objectFit: 'contain',
