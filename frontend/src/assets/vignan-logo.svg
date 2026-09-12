@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 62" width="320" height="62" fill="none">
+  <!-- Left Shield Crest (Exact to Image 1) -->
+  <g transform="translate(2, 5)">
+    <!-- Outer Shield Outline with concave top curve and pointed top corners -->
+    <path d="M5 8 C14 11 34 11 43 8 C44 20 40 37 24 47 C8 37 4 20 5 8 Z" 
+          fill="#FFFFFF" 
+          stroke="#7A70D6" 
+          stroke-width="1.6" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+
+    <!-- Inner Lavender / Purple Circular Disk -->
+    <circle cx="24" cy="25" r="14" fill="#B4B0ED"/>
+
+    <!-- 5 Radiating Blue Spokes / Arms aligned with star -->
+    <g stroke="#0072CE" stroke-width="3.5" stroke-linecap="butt">
+      <!-- Straight Down -->
+      <line x1="24" y1="25" x2="24" y2="39"/>
+      <!-- Top Right -->
+      <line x1="24" y1="25" x2="35.5" y2="16.5"/>
+      <!-- Top Left -->
+      <line x1="24" y1="25" x2="12.5" y2="16.5"/>
+      <!-- Bottom Right -->
+      <line x1="24" y1="25" x2="37" y2="29.5"/>
+      <!-- Bottom Left -->
+      <line x1="24" y1="25" x2="11" y2="29.5"/>
+    </g>
+
+    <!-- Central White Circle with Blue Border -->
+    <circle cx="24" cy="25" r="5.2" fill="#FFFFFF" stroke="#0072CE" stroke-width="1"/>
+
+    <!-- Center 5-Pointed Blue Star -->
+    <polygon points="
+      24.0, 21.5
+      25.1, 23.8
+      27.6, 23.9
+      25.7, 25.6
+      26.3, 28.0
+      24.0, 26.6
+      21.7, 28.0
+      22.3, 25.6
+      20.4, 23.9
+      22.9, 23.8" 
+      fill="#0072CE"/>
+  </g>
+
+  <!-- Main Brand Text: VIGNAN'S -->
+  <g transform="translate(52, 5)">
+    <!-- Red Bold VIGNAN'S -->
+    <text x="0" y="21" font-family="'Arial Black', 'Inter', -apple-system, sans-serif" font-size="20" font-weight="900" fill="#C8102E" letter-spacing="0.02em">
+      VIGNAN'S
+    </text>
+
+    <!-- Subtitle Line -->
+    <text x="1" y="31" font-family="'Inter', -apple-system, sans-serif" font-size="5.5" font-weight="700" fill="#172033" letter-spacing="0.04em">
+      FOUNDATION FOR SCIENCE, TECHNOLOGY &amp; RESEARCH
+    </text>
+
+    <!-- Solid Blue Banner Pill -->
+    <rect x="0" y="35" width="180" height="13" rx="2" fill="#005696"/>
+    <text x="90" y="44.5" font-family="'Inter', -apple-system, sans-serif" font-size="5.3" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.02em">
+      (Deemed to be University) • Estd. u/s 3 of UGC Act 1956
+    </text>
+  </g>
+
+  <!-- Vertical 3-Badge Stack on the right of Vignan text (as in reference) -->
+  <g transform="translate(238, 6)">
+    <!-- Border Box -->
+    <rect x="0" y="0" width="34" height="48" rx="2" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="0.8"/>
+    <line x1="0" y1="16" x2="34" y2="16" stroke="#E2E8F0" stroke-width="0.8"/>
+    <line x1="0" y1="32" x2="34" y2="32" stroke="#E2E8F0" stroke-width="0.8"/>
+
+    <!-- Slot 1: AICTE / UGC -->
+    <circle cx="17" cy="8" r="5.5" fill="#FFFBEB" stroke="#F59E0B" stroke-width="0.7"/>
+    <text x="17" y="10" font-family="'Inter', sans-serif" font-size="4.5" font-weight="800" fill="#B45309" text-anchor="middle">AICTE</text>
+
+    <!-- Slot 2: NAAC A+ -->
+    <text x="17" y="24" font-family="'Arial Black', sans-serif" font-size="5" font-weight="900" fill="#15803D" text-anchor="middle">NAAC</text>
+    <text x="17" y="30" font-family="'Arial Black', sans-serif" font-size="6" font-weight="900" fill="#DC2626" text-anchor="middle">A+</text>
+
+    <!-- Slot 3: NIRF 70th -->
+    <text x="17" y="39" font-family="'Inter', sans-serif" font-size="5" font-weight="800" fill="#4338CA" text-anchor="middle">nirf</text>
+    <text x="17" y="45" font-family="'Inter', sans-serif" font-size="4.5" font-weight="800" fill="#64748B" text-anchor="middle">70th</text>
+  </g>
+</svg>
