@@ -516,7 +516,7 @@ export default function TeachingImpactPage() {
                       if (!isCustomSkill) {
                         setFormData((prev) => ({ ...prev, skill_name: '' }));
                       } else {
-                        const fallbackSkill = availableSkills[0]?.skill_name || availableSkills[0] || 'Generative AI';
+                        const fallbackSkill = availableSkills[0]?.skill_name || availableSkills[0] || '';
                         setFormData((prev) => ({ ...prev, skill_name: fallbackSkill }));
                       }
                     }}

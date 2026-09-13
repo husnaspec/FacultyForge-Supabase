@@ -2,8 +2,17 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / ".env")
+# Canonical resolution: always based on source file location, never CWD
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+load_dotenv(BACKEND_DIR / ".env")
+
+# Canonical SQLite DB file path
+DEFAULT_DB_PATH = BACKEND_DIR / "facultyforge.db"
+env_db_path = os.getenv("SQLITE_DB_PATH")
+if env_db_path and env_db_path.strip():
+    RESOLVED_DB_PATH = Path(env_db_path.strip()).resolve()
+else:
+    RESOLVED_DB_PATH = DEFAULT_DB_PATH.resolve()
 
 class Settings:
     PROJECT_NAME: str = os.getenv("PROJECT_NAME", "FacultyForge AI")
@@ -12,12 +21,10 @@ class Settings:
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "facultyforge-secret-key-change-in-production")
     
-    # MongoDB Atlas configuration (read strictly from environment, never hardcoded)
-    MONGODB_URI: str = os.getenv("MONGODB_URI", "")
-    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "facultyforge")
-    
-    # Legacy database URL for reference/migration
-    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/facultyforge.db")
+    # Canonical SQLite configuration
+    BACKEND_DIR: Path = BACKEND_DIR
+    SQLITE_DB_PATH: Path = RESOLVED_DB_PATH
+    DATABASE_URL: str = f"sqlite:///{RESOLVED_DB_PATH.as_posix()}"
     
     # AI Provider Configuration
     AI_PROVIDER: str = os.getenv("AI_PROVIDER", "deterministic") # "deterministic" or "llm"
@@ -26,4 +33,3 @@ class Settings:
     AI_MODEL: str = os.getenv("AI_MODEL", "gemini-1.5-flash")
 
 settings = Settings()
-

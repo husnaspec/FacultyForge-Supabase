@@ -15,7 +15,10 @@ import {
   FileText,
 } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
+
 export default function AIIntelligenceHub() {
+  const { activeFacultyId } = useAuth();
   const [plannerData, setPlannerData] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +50,8 @@ export default function AIIntelligenceHub() {
   const handleRunOrchestrator = async () => {
     setOrchestrating(true);
     try {
-      const res = await api.orchestrateFaculty(1); // Dr. Ayesha Khan
+      const targetId = activeFacultyId || 1;
+      const res = await api.orchestrateFaculty(targetId);
       setOrchestratorResult(res);
       loadHubData();
     } catch (err) {
@@ -87,7 +91,7 @@ export default function AIIntelligenceHub() {
         <div className="alert alert-success">
           <CheckCircle2 size={16} />
           <span>
-            Orchestrator pipeline completed for Dr. Ayesha Khan: Generated {orchestratorResult.skill_gaps?.length} skill gaps and {orchestratorResult.recommendations?.length} personalized training proposals.
+            Orchestrator pipeline completed: Generated {orchestratorResult.skill_gaps?.length || 0} skill gaps and {orchestratorResult.recommendations?.length || 0} personalized training proposals.
           </span>
         </div>
       )}

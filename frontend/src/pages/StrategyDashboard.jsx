@@ -174,28 +174,28 @@ export default function StrategyDashboard() {
       <div className="grid-4">
         <MetricCard
           title="LEARNING GAIN (COGNITIVE IMPACT)"
-          value={`+${summary.average_learning_gain_pp || 32} pp`}
+          value={summary.average_learning_gain_pp != null && summary.average_learning_gain_pp > 0 ? `+${summary.average_learning_gain_pp} pp` : summary.average_learning_gain_pp === 0 ? '0.0 pp' : 'N/A'}
           subtitle="Pre to Post assessment delta"
           icon={TrendingUp}
           color="green"
         />
         <MetricCard
           title="FACULTY COMPLIANCE RATE"
-          value={`${summary.compliance_rate || 78}%`}
-          subtitle="Annual 40hr requirement met"
+          value={`${summary.compliance_rate ?? 0}%`}
+          subtitle="Annual institution requirement met"
           icon={ShieldCheck}
           color="blue"
         />
         <MetricCard
           title="CERTIFICATES ISSUED"
-          value={summary.certificates_count || 6}
-          subtitle="Verifiable cryptographically"
+          value={summary.certificates_count ?? 0}
+          subtitle="Token-verifiable digital certificates"
           icon={Award}
           color="purple"
         />
         <MetricCard
           title="FACULTY WITH SKILL GAPS"
-          value={summary.faculty_with_gaps || 8}
+          value={summary.faculty_with_gaps ?? 0}
           subtitle="Active growth pathways tracked"
           icon={Target}
           color="amber"

@@ -241,32 +241,32 @@ export default function Dashboard() {
       <div className="grid-4">
         <MetricCard
           title="TOTAL FACULTY"
-          value={summary?.total_faculty || 12}
-          subtitle={`${summary?.total_departments || 4} Active Departments`}
+          value={summary?.total_faculty ?? 0}
+          subtitle={`${summary?.total_departments ?? 0} Active Departments`}
           icon={Users}
           color="blue"
         />
         <MetricCard
           title="ACTIVE PROGRAMMES"
-          value={summary?.active_programmes || 1}
-          subtitle={`${summary?.completed_programmes || 3} Completed dossiers`}
+          value={summary?.active_programmes ?? 0}
+          subtitle={`${summary?.completed_programmes ?? 0} Completed dossiers`}
           icon={Calendar}
           color="purple"
         />
         <MetricCard
           title="TOTAL TRAINING HOURS"
-          value={`${summary?.total_training_hours || 120} hrs`}
+          value={`${summary?.total_training_hours ?? 0} hrs`}
           subtitle="Cumulative continuous development"
           icon={Clock}
           color="cyan"
         />
         <MetricCard
           title="AVERAGE LEARNING GAIN"
-          value={`+${summary?.average_learning_gain_pp || 32} pp`}
+          value={summary?.average_learning_gain_pp != null && summary.average_learning_gain_pp > 0 ? `+${summary.average_learning_gain_pp} pp` : summary?.average_learning_gain_pp === 0 ? '0.0 pp' : 'N/A'}
           subtitle="Absolute pre-to-post cognitive gain"
           icon={TrendingUp}
           color="green"
-          trend="Impact: HIGH"
+          trend={summary?.average_learning_gain_pp ? "Impact: Measured" : "Pending assessments"}
         />
       </div>
 
@@ -371,22 +371,22 @@ export default function Dashboard() {
           {/* Quick Demo Pointer */}
           <div
             style={{
-              padding: '0.875rem 1rem',
+              padding: '0.75rem 1rem',
+              background: 'rgba(99, 102, 241, 0.08)',
               borderRadius: 'var(--radius-md)',
-              background: 'rgba(59, 130, 246, 0.08)',
-              border: '1px solid rgba(59, 130, 246, 0.2)',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
               fontSize: '0.8125rem',
-              color: '#93c5fd',
+              color: 'var(--brand-primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
             }}
           >
             <span>
-              <strong>Demo Scenario:</strong> Dr. Ayesha Khan has identified skill gaps in Generative AI.
+              <strong>Guided Workflow:</strong> Explore faculty profiles, diagnose skill gaps, and generate customized training pathways.
             </span>
-            <Link to="/app/faculty/1" className="btn btn-primary btn-sm" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
-              Start Flow
+            <Link to="/app/faculty" className="btn btn-primary btn-sm" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
+              View Faculty
             </Link>
           </div>
         </div>
@@ -523,7 +523,7 @@ export default function Dashboard() {
               agent: 'AGENT 58',
               name: 'IQAC Quality Compliance Audit',
               protocol: 'Quality Metric Telemetry',
-              payload: 'Empirical learning gains (+32pp), participant feedback indices (4.7/5.0), and venue audits.',
+              payload: 'Empirical learning gains, participant feedback indices, and venue audits.',
               status: '0 Non-compliance flags',
               color: '#10b981',
               badge: 'Verified',

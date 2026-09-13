@@ -20,7 +20,7 @@ class DepartmentUpdate(BaseModel):
 
 class DepartmentResponse(DepartmentBase):
     id: int
-    created_at: datetime
+    created_at: Optional[datetime] = None
     faculty_count: Optional[int] = 0
     event_count: Optional[int] = 0
 
@@ -61,7 +61,7 @@ class FacultyUpdate(BaseModel):
 
 class FacultyResponse(FacultyBase):
     id: int
-    created_at: datetime
+    created_at: Optional[datetime] = None
     department_name: Optional[str] = None
 
     class Config:
@@ -107,7 +107,7 @@ class ResourcePersonUpdate(BaseModel):
 
 class ResourcePersonResponse(ResourcePersonBase):
     id: int
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -183,8 +183,8 @@ class EventUpdate(BaseModel):
 
 class EventResponse(EventBase):
     id: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     department_name: Optional[str] = None
     coordinator_name: Optional[str] = None
     registered_count: Optional[int] = 0
@@ -343,7 +343,7 @@ class AssessmentResponse(BaseModel):
     title: str
     total_marks: float
     passing_marks: float
-    created_at: datetime
+    created_at: Optional[datetime] = None
     questions: Optional[List[QuestionResponse]] = []
 
     class Config:
@@ -435,7 +435,7 @@ class ComplianceRuleCreate(BaseModel):
 
 class ComplianceRuleResponse(ComplianceRuleCreate):
     id: int
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -676,7 +676,7 @@ class SkillEvidenceResponse(BaseModel):
     score: Optional[float] = None
     verified: bool
     verified_by: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -726,7 +726,7 @@ class TeachingImpactResponse(BaseModel):
     impact_status: str
     status: Optional[str] = None # Alias
     applied_at: Optional[datetime] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     verified_at: Optional[datetime] = None
     verified_by: Optional[str] = None
 

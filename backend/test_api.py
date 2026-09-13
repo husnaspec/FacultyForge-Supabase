@@ -9,12 +9,10 @@ from app.db.base import Base
 from app.db.session import engine, SessionLocal
 from app.services.seed_service import seed_service
 
-# Initialize and seed
-Base.metadata.drop_all(bind=engine)
-Base.metadata.create_all(bind=engine)
-db = SessionLocal()
-seed_service.seed_all(db)
-db.close()
+from app.db.init_db import init_db_schema
+
+# Safely ensure schema exists without dropping tables or resetting data
+init_db_schema()
 
 client = TestClient(app)
 
