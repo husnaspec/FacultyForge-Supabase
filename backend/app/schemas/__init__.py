@@ -136,7 +136,7 @@ class EventSessionResponse(EventSessionBase):
 
 # ======================= EVENT SCHEMAS =======================
 class EventBase(BaseModel):
-    event_code: str
+    event_code: Optional[str] = None
     title: str
     description: Optional[str] = None
     event_type: str = "FDP" # FDP, WORKSHOP, SEMINAR, TRAINING, STTP
@@ -220,15 +220,37 @@ class ProposalResponse(BaseModel):
 
 # ======================= REGISTRATION SCHEMAS =======================
 class RegistrationCreate(BaseModel):
-    faculty_id: int
+    faculty_id: Optional[int] = None
+    full_name: Optional[str] = None
+    faculty_code: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    institution_name: Optional[str] = "Vignan's University"
+    years_of_experience: Optional[float] = 0.0
+    teaching_interests: Optional[str] = None
+    research_interests: Optional[str] = None
+    consent: Optional[bool] = True
 
 class RegistrationResponse(BaseModel):
     id: int
+    registration_id: Optional[int] = None
     event_id: int
-    faculty_id: int
+    faculty_id: Optional[int] = None
     faculty_name: Optional[str] = None
+    participant_name: Optional[str] = None
     faculty_code: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
     department_name: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    institution_name: Optional[str] = None
+    registration_code: Optional[str] = None
+    registration_token: Optional[str] = None
+    qr_token: Optional[str] = None
+    attendance_status: Optional[str] = "PENDING"
     registered_at: datetime
     registration_status: str
     eligibility_status: str
@@ -240,9 +262,22 @@ class RegistrationResponse(BaseModel):
 # ======================= ATTENDANCE SCHEMAS =======================
 class AttendanceRecordRequest(BaseModel):
     session_id: Optional[int] = None
-    faculty_id: int
+    faculty_id: Optional[int] = None
+    registration_id: Optional[int] = None
     attendance_status: str = "PRESENT" # PRESENT, ABSENT
     attendance_method: str = "MANUAL" # MANUAL, QR
+
+class AttendanceQRCheckinRequest(BaseModel):
+    event_id: int
+    qr_token: str
+    session_id: Optional[int] = None
+
+class AttendanceManualRequest(BaseModel):
+    event_id: int
+    registration_id: Optional[int] = None
+    faculty_id: Optional[int] = None
+    session_id: Optional[int] = None
+    attendance_status: str = "PRESENT" # PRESENT, ABSENT
 
 class AttendanceBulkRequest(BaseModel):
     event_id: int
@@ -253,8 +288,12 @@ class AttendanceResponse(BaseModel):
     id: int
     event_id: int
     session_id: Optional[int] = None
-    faculty_id: int
+    faculty_id: Optional[int] = None
+    registration_id: Optional[int] = None
     faculty_name: Optional[str] = None
+    participant_name: Optional[str] = None
+    faculty_code: Optional[str] = None
+    department: Optional[str] = None
     attendance_date: datetime
     attendance_status: str
     attendance_method: str
@@ -544,9 +583,10 @@ class LearningImpactResponse(BaseModel):
     attendance_rate: float
     completion_rate: float
     improvement_distribution: Dict[str, int]
-    impact_level: str # HIGH, MODERATE, LOW
+    impact_level: str # HIGH, MODERATE, LOW, PENDING
     participant_count: int
     explanation: str
+    has_data: Optional[bool] = False
 
 class FeedbackIntelligenceResponse(BaseModel):
     event_id: int
@@ -561,6 +601,7 @@ class FeedbackIntelligenceResponse(BaseModel):
     common_requests: List[str]
     recommended_improvements: List[str]
     sentiment_distribution: Dict[str, int]
+    has_feedback: Optional[bool] = False
 
 class PredictiveTrainingDemandItem(BaseModel):
     rank: int
@@ -650,15 +691,23 @@ class VerifiedSkillItem(BaseModel):
 
 # 3. Teaching Impact
 class TeachingImpactCreate(BaseModel):
+    faculty_id: Optional[int] = None
     event_id: Optional[int] = None
     skill_name: str
     application_type: str # CLASSROOM, RESEARCH, LAB, ASSESSMENT, CONTENT_CREATION, PROJECT_GUIDANCE
-    application_description: str
+    application_description: Optional[str] = None
+    description: Optional[str] = None # Alias
     evidence_url: Optional[str] = None
+    evidence_reference: Optional[str] = None # Alias
     self_rating: float = 4.0
     reviewer_rating: Optional[float] = None
-    impact_status: str = "APPLIED" # PLANNED, APPLIED, VERIFIED
+    impact_status: Optional[str] = "APPLIED" # PLANNED, APPLIED, VERIFIED
+    status: Optional[str] = None # Alias
     applied_at: Optional[datetime] = None
+
+class TeachingImpactVerify(BaseModel):
+    reviewer_rating: Optional[float] = None
+    verified_by: Optional[str] = "HOD / IQAC Review"
 
 class TeachingImpactResponse(BaseModel):
     id: int
@@ -669,12 +718,17 @@ class TeachingImpactResponse(BaseModel):
     skill_name: str
     application_type: str
     application_description: str
+    description: Optional[str] = None # Alias
     evidence_url: Optional[str] = None
+    evidence_reference: Optional[str] = None # Alias
     self_rating: float
     reviewer_rating: Optional[float] = None
     impact_status: str
+    status: Optional[str] = None # Alias
     applied_at: Optional[datetime] = None
     created_at: datetime
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -147,3 +147,17 @@ def get_training_equity(
 @router.get("/agents/knowledge-sharing", response_model=KnowledgeSharingResponse)
 def get_knowledge_sharing_recommendations(db: Session = Depends(get_db)):
     return knowledge_sharing_agent.recommend_sessions(db)
+
+@router.get("/agents/department-heatmap")
+@router.get("/agents/skill-heatmap")
+def get_agents_skill_heatmap(
+    department_id: Optional[int] = None,
+    skill_category: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    from app.services.skill_heatmap_service import skill_heatmap_service
+    return skill_heatmap_service.get_skill_heatmap(
+        db,
+        department_id=department_id,
+        skill_category=skill_category
+    )

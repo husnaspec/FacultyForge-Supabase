@@ -11,10 +11,14 @@ from app.api.v1.router import api_router
 import app.models
 
 from app.db.init_db import init_db_schema
+from app.db.mongo import mongo_manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Ensure tables and columns exist safely without data loss, and auto-seed initial data
+    # Startup: Connect to MongoDB if MONGODB_URI is provided
+    mongo_manager.connect()
+    
+    # Ensure legacy tables exist for migration/reference safely
     init_db_schema()
     db = SessionLocal()
     try:
@@ -22,7 +26,8 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     yield
-    # Shutdown
+    # Shutdown: Close MongoDB connection
+    mongo_manager.close()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

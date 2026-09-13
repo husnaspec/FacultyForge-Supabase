@@ -22,44 +22,30 @@ class FeedbackAgent:
         total_resp = len(feedbacks)
 
         if total_resp == 0:
-            # Baseline realistic demo intelligence
             return {
                 "event_id": event.id,
                 "event_title": event.title,
                 "total_responses": 0,
-                "overall_rating": 4.6,
+                "overall_rating": 0.0,
                 "metrics": {
-                    "content": 4.8,
-                    "trainer": 4.9,
-                    "relevance": 4.7,
-                    "practical": 4.1,
-                    "organization": 4.6
+                    "content": 0.0,
+                    "trainer": 0.0,
+                    "relevance": 0.0,
+                    "practical": 0.0,
+                    "organization": 0.0
                 },
-                "positive_themes": [
-                    "Content highly relevant to modern engineering syllabus",
-                    "Trainer highly rated for pedagogical clarity and depth",
-                    "Concepts explained clearly with concrete industrial examples"
-                ],
-                "negative_themes": [
-                    "Session duration too long without mid-session breaks",
-                    "Practical activities insufficient for complete code execution"
-                ],
-                "trainer_sentiment": "Overwhelmingly Positive (94% satisfaction)",
-                "practical_sentiment": "Constructive Need for More Dedicated Lab Hours (68% satisfaction)",
-                "common_requests": [
-                    "Provide persistent cloud GPU lab environments for post-event practice",
-                    "Include advanced follow-up sessions on production deployment"
-                ],
-                "recommended_improvements": [
-                    "Increase practical hands-on laboratory activities in future FDPs",
-                    "Split long technical lectures into modular 45-minute interactive blocks",
-                    "Distribute environment setup guides 48 hours in advance"
-                ],
+                "positive_themes": [],
+                "negative_themes": [],
+                "trainer_sentiment": "No feedback recorded yet",
+                "practical_sentiment": "No feedback recorded yet",
+                "common_requests": [],
+                "recommended_improvements": [],
                 "sentiment_distribution": {
-                    "Positive": 85,
-                    "Neutral": 10,
-                    "Critical": 5
-                }
+                    "Positive": 0,
+                    "Neutral": 0,
+                    "Critical": 0
+                },
+                "has_feedback": False
             }
 
         # Calculate actual metrics from DB
@@ -133,7 +119,8 @@ class FeedbackAgent:
                 "Positive": round((pos_count / total_resp) * 100),
                 "Neutral": round((neu_count / total_resp) * 100),
                 "Critical": round((crit_count / total_resp) * 100)
-            }
+            },
+            "has_feedback": True
         }
 
         # Save analysis

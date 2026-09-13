@@ -58,13 +58,16 @@ class CertificateService:
             Feedback.faculty_id == faculty_id
         ).first()
 
-        # For hackathon demo flexibility, allow certificate if at least registered and attended or attempted
-        is_eligible = (attendance_pct >= 60.0 or post_attempt is not None or fb is not None)
+        # Strict eligibility verification
         reasons = []
-        if attendance_pct < 60.0 and not post_attempt:
-            reasons.append(f"Attendance {attendance_pct:.1f}% below minimum requirement.")
-        if not fb and not post_attempt:
-            reasons.append("Post-assessment or feedback pending.")
+        if attendance_pct < 60.0:
+            reasons.append(f"Attendance {attendance_pct:.1f}% below minimum requirement (60%).")
+        if post_assessment and not post_attempt:
+            reasons.append("Post-assessment attempt required.")
+        if not fb:
+            reasons.append("Participant feedback required.")
+
+        is_eligible = (len(reasons) == 0)
 
         return {
             "is_eligible": is_eligible,
@@ -75,13 +78,18 @@ class CertificateService:
         }
 
     @staticmethod
-    def generate_certificate_for_faculty(db: Session, event_id: int, faculty_id: int) -> Certificate:
+    def generate_certificate_for_faculty(db: Session, event_id: int, faculty_id: int, force: bool = False) -> Certificate:
         existing = db.query(Certificate).filter(
             Certificate.event_id == event_id,
             Certificate.faculty_id == faculty_id
         ).first()
         if existing:
             return existing
+
+        if not force:
+            eligibility = CertificateService.check_eligibility(db, event_id, faculty_id)
+            if not eligibility["is_eligible"]:
+                raise ValueError(f"Faculty is not eligible for certificate: {eligibility['reason']}")
 
         event = db.query(Event).filter(Event.id == event_id).first()
         faculty = db.query(Faculty).filter(Faculty.id == faculty_id).first()
@@ -100,6 +108,7 @@ class CertificateService:
             "participant": faculty.full_name,
             "event": event.title,
             "training_hours": event.duration_hours,
+            "credential_type": "token-verifiable digital certificate",
             "issuer": "FacultyForge AI Institutional Academic Council"
         }
 
@@ -133,12 +142,18 @@ class CertificateService:
         if not event:
             raise ValueError("Event not found")
 
-        registrations = db.query(Registration).filter(Registration.event_id == event_id).all()
+        registrations = db.query(Registration).filter(
+            Registration.event_id == event_id,
+            Registration.registration_status == "CONFIRMED"
+        ).all()
         created_certs = []
         for reg in registrations:
-            # Check or generate
-            cert = CertificateService.generate_certificate_for_faculty(db, event_id, reg.faculty_id)
-            created_certs.append(cert)
+            if not reg.faculty_id:
+                continue
+            eligibility = CertificateService.check_eligibility(db, event_id, reg.faculty_id)
+            if eligibility["is_eligible"]:
+                cert = CertificateService.generate_certificate_for_faculty(db, event_id, reg.faculty_id)
+                created_certs.append(cert)
         return created_certs
 
     @staticmethod
@@ -160,6 +175,7 @@ class CertificateService:
             "duration_hours": cert.training_hours,
             "issue_date": cert.issue_date.strftime("%B %d, %Y"),
             "organizing_department": dept_name,
+            "credential_type": "token-verifiable digital certificate",
             "verification_status": "VALID CERTIFICATE" if cert.status == "VALID" else "REVOKED CERTIFICATE"
         }
 

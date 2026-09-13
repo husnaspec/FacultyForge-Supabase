@@ -80,31 +80,15 @@ class SkillHeatmapService:
                     if any(skill_lower in g.skill_name.lower() or g.skill_name.lower() in skill_lower for g in gaps):
                         gap_count += 1
 
-                # Calculate score: baseline ratio of faculty with skill minus gap penalties
-                # If department is known for this (e.g. CSE & GenAI, IT & Cyber, ECE & Embedded, MECH & Robotics)
-                base_ratio = (skill_count / total_faculty) * 100.0
-                gap_penalty = (gap_count / total_faculty) * 30.0
+                # Calculate genuine score from real database skill counts and gaps
+                skill_ratio = (skill_count / total_faculty) * 100.0 if total_faculty > 0 else 0.0
+                gap_ratio = (gap_count / total_faculty) * 100.0 if total_faculty > 0 else 0.0
+                score = max(0.0, min(100.0, round(skill_ratio - (gap_ratio * 0.4) + 20.0 if skill_count > 0 else (0.0 if gap_count == 0 else 10.0), 1)))
 
-                raw_score = max(20.0, min(95.0, base_ratio + 35.0 - gap_penalty))
-
-                # Boost realistic institutional demo values for known departments
-                if dept.code == "CSE" and skill in ["Generative AI", "Machine Learning", "Cloud Computing"]:
-                    raw_score = max(raw_score, 85.0)
-                elif dept.code == "IT" and skill in ["Cybersecurity", "Cloud Computing", "Generative AI"]:
-                    raw_score = max(raw_score, 82.0)
-                elif dept.code == "ECE" and skill in ["Machine Learning", "Outcome Based Education"]:
-                    raw_score = max(raw_score, 76.0)
-                elif skill == "Outcome Based Education" and dept.code in ["ECE", "MECH"]:
-                    raw_score = max(raw_score, 78.0)
-                elif skill == "Research Methodology":
-                    raw_score = max(raw_score, 68.0)
-
-                score = round(raw_score, 1)
-
-                if score >= 75.0:
+                if score >= 70.0:
                     level = "HIGH"
                     high_strength_count += 1
-                elif score >= 50.0:
+                elif score >= 40.0:
                     level = "MED"
                 else:
                     level = "LOW"
@@ -120,12 +104,16 @@ class SkillHeatmapService:
                     "total_faculty": total_faculty
                 }
 
+        total_cells = len(departments) * len(skills)
+        all_cell_scores = [matrix[s][d.code]["score"] for s in skills for d in departments if d.code in matrix[s]]
+        avg_readiness = round(sum(all_cell_scores) / len(all_cell_scores), 1) if all_cell_scores else 0.0
+
         summary = {
             "total_departments_analyzed": len(departments),
             "total_skills_tracked": len(skills),
             "high_competency_cells": high_strength_count,
             "development_priority_cells": critical_gap_count,
-            "overall_readiness_index": 76.4
+            "overall_readiness_index": avg_readiness
         }
 
         return {

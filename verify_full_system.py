@@ -1,241 +1,438 @@
+import urllib.request
+import json
+import sqlite3
+import time
 import sys
-import os
-import uuid
-from fastapi.testclient import TestClient
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend"))
+BASE_URL = "http://127.0.0.1:8000/api/v1"
 
-from app.main import app
-from app.db.base import Base
-from app.db.session import engine, SessionLocal
-from app.services.seed_service import seed_service
+def api_call(endpoint, method="GET", data=None):
+    url = f"{BASE_URL}{endpoint}"
+    req = urllib.request.Request(url, method=method)
+    req.add_header("Content-Type", "application/json")
+    if data is not None:
+        body = json.dumps(data).encode("utf-8")
+        req.data = body
+    try:
+        with urllib.request.urlopen(req) as resp:
+            status = resp.status
+            content = resp.read().decode("utf-8")
+            return status, json.loads(content) if content else {}
+    except urllib.error.HTTPError as e:
+        content = e.read().decode("utf-8")
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            parsed = {"error": content}
+        return e.code, parsed
 
-def run_20_step_demo():
-    print("=" * 70)
-    print("FACULTYFORGE AI - 20-STEP END-TO-END DEMO VERIFICATION")
-    print("=" * 70)
+def run():
+    print("==================================================")
+    print("STARTING COMPLETE REAL DR. VEDA TEST JOURNEY (30 STEPS)")
+    print("==================================================")
 
-    # Cleanly reset database to pristine demo state
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    seed_service.seed_all(db)
-    db.close()
+    # 0. Check or create Dr. Veda in Faculty table
+    conn = sqlite3.connect("backend/facultyforge.db")
+    c = conn.cursor()
+    c.execute("SELECT id, faculty_code, full_name, email, department_id FROM faculty WHERE full_name LIKE '%Veda%' OR faculty_code = 'VU-FAC-0105'")
+    row = c.fetchone()
+    if not row:
+        print("[0] Creating Dr. Veda faculty record...")
+        c.execute("""
+            INSERT INTO faculty (faculty_code, full_name, email, department_id, designation, qualification, years_of_experience, teaching_interests, research_interests, development_interests, is_active)
+            VALUES ('VU-FAC-0105', 'Dr. Veda Prakash', 'dr.veda@vignan.ac.in', 1, 'Associate Professor', 'Ph.D. in Computer Science', 8.5, 'Artificial Intelligence, Machine Learning', 'Generative AI, Large Language Models', 'Prompt Engineering & Pedagogical AI', 1)
+        """)
+        conn.commit()
+        c.execute("SELECT id, faculty_code, full_name, email, department_id FROM faculty WHERE faculty_code = 'VU-FAC-0105'")
+        row = c.fetchone()
+    conn.close()
 
-    client = TestClient(app)
+    veda_id, veda_code, veda_name, veda_email, veda_dept = row
+    print(f"[0] Dr. Veda ready: ID={veda_id}, Code={veda_code}, Name={veda_name}, Email={veda_email}")
 
-    # STEP 1: Open Dashboard
-    print("\n[STEP 1] Open Dashboard Summary...")
-    res = client.get("/api/v1/dashboard/summary")
-    assert res.status_code == 200
-    dash = res.json()
-    print(f"  -> Dashboard loaded. Total Faculty: {dash['total_faculty']}, Active Programmes: {dash['active_programmes']}, Avg Attendance: {dash['average_attendance']}%")
+    # Step 1: Create Event (DRAFT)
+    print("\n--- STEP 1: CREATE EVENT ---")
+    st, ev_res = api_call("/events", method="POST", data={
+        "title": "AI for Engineers Day",
+        "department_id": veda_dept,
+        "event_type": "FDP",
+        "duration_hours": 16.0,
+        "capacity": 50,
+        "delivery_mode": "HYBRID",
+        "description": "Comprehensive FDP on engineering generative AI applications and pedagogical transformation.",
+        "objectives": "Equip faculty to construct and evaluate domain-specific LLM architectures.",
+        "learning_outcomes": "Demonstrated mastery of LLM integration and diagnostic prompt pipelines.",
+        "estimated_budget": 45000.0,
+        "target_audience": "Faculty in CSE, IT, and Allied Engineering"
+    })
+    assert st == 201, f"Create event failed: {st}, {ev_res}"
+    event_id = ev_res["id"]
+    print(f"PASS: Event created with ID {event_id}, Status={ev_res['status']}")
 
-    # STEP 2: Open Dr. Ayesha Khan (Department: CSE)
-    print("\n[STEP 2] Open Dr. Ayesha Khan (Department: CSE)...")
-    res = client.get("/api/v1/faculty/1")
-    assert res.status_code == 200
-    ayesha = res.json()
-    print(f"  -> Profile loaded: {ayesha['full_name']} | Code: {ayesha['faculty_code']} | Dept: {ayesha['department_name']} | Designation: {ayesha['designation']}")
+    # Step 2: Submit Proposal
+    print("\n--- STEP 2: SUBMIT PROPOSAL ---")
+    st, prop_res = api_call(f"/events/{event_id}/submit", method="POST", data={"submitted_by": "FDP Coordinator"})
+    assert st == 201, f"Submit proposal failed: {st}, {prop_res}"
+    prop_id = prop_res["id"]
+    print(f"PASS: Proposal submitted with ID {prop_id}, Status={prop_res['approval_status']}")
 
-    # STEP 3: Click RUN AI SKILL ANALYSIS
-    print("\n[STEP 3] Click: RUN AI SKILL ANALYSIS...")
-    res = client.post("/api/v1/agents/skill-gap/1")
-    assert res.status_code == 200
-    gaps = res.json()["skill_gaps"]
-    print(f"  -> System identified {len(gaps)} competency gaps:")
-    for g in gaps:
-        print(f"     * [{g['priority']} PRIORITY] {g['skill']} (Current: {g['current_level']}, Required: {g['required_level']}, Gap Score: {g['gap_score']})")
-    assert any(g["priority"] == "HIGH" and "Generative AI" in g["skill"] for g in gaps)
-    assert any("Research Methodology" in g["skill"] for g in gaps)
-
-    # STEP 4: Click GENERATE TRAINING RECOMMENDATIONS
-    print("\n[STEP 4] Click: GENERATE TRAINING RECOMMENDATIONS...")
-    res = client.post("/api/v1/agents/recommend-training/1")
-    assert res.status_code == 200
-    recs = res.json()["recommendations"]
-    top_rec = recs[0]
-    print(f"  -> Top Recommendation: '{top_rec['title']}' | Priority: {top_rec['priority']} | Confidence: {top_rec['confidence_score'] * 100:.1f}%")
-    print(f"     Reasons: {'; '.join(top_rec['reasons'])}")
-
-    # STEP 5: Go to AI FDP Generator -> Enter prompt
-    prompt = "Create a 2-day FDP on Generative AI for Engineering Faculty"
-    print(f"\n[STEP 5] Go to: AI FDP Generator -> Enter: '{prompt}'...")
-    res = client.post("/api/v1/agents/generate-fdp", json={"prompt": prompt, "department_id": 1, "target_duration_days": 2})
-    assert res.status_code == 200
-    gen_data = res.json()
-    event_id = gen_data["created_draft_event_id"]
-    print(f"  -> Generated: '{gen_data['title']}' ({gen_data['duration_hours']} hours, {len(gen_data['schedule'])} sessions)")
-    print(f"     Pre-test questions generated: {len(gen_data['pre_assessment_questions'])}, Post-test questions: {len(gen_data['post_assessment_questions'])}")
-
-    # STEP 6: Save as Draft
-    print("\n[STEP 6] Verify Saved as DRAFT...")
-    res = client.get(f"/api/v1/events/{event_id}")
-    assert res.status_code == 200
-    assert res.json()["status"] == "DRAFT"
-    print(f"  -> Event {res.json()['event_code']} verified in DRAFT status.")
-
-    # STEP 7: Submit for Approval
-    print("\n[STEP 7] Submit for Approval...")
-    res = client.post(f"/api/v1/events/{event_id}/submit", json={"submitted_by": "Dr. Ayesha Khan"})
-    assert res.status_code == 201
-    prop = res.json()
-    print(f"  -> Proposal submitted. Status: {prop['approval_status']} (Event status: PENDING_APPROVAL)")
-
-    # STEP 8: Approve FDP (HOD Review)
-    print("\n[STEP 8] HOD / IQAC Approves FDP...")
-    res = client.post(f"/api/v1/proposals/{prop['id']}/approve", json={
-        "approver_name": "Dr. Priya Iyer",
+    # Step 3: Approve Proposal
+    print("\n--- STEP 3: APPROVE PROPOSAL ---")
+    st, app_res = api_call(f"/proposals/{prop_id}/approve", method="POST", data={
+        "approver_name": "Prof. K. R. Rao",
         "approver_role": "HOD",
-        "remarks": "Approved with commendations. Fulfills department AICTE emerging technology upskilling mandate."
+        "remarks": "Approved. Directly addresses departmental AICTE continuous development targets."
     })
-    assert res.status_code == 200
-    print(f"  -> Proposal approved. Remarks: '{res.json()['remarks']}'")
+    assert st == 200, f"Approve proposal failed: {st}, {app_res}"
+    print(f"PASS: Proposal approved, Event Status={app_res['approval_status']}")
 
-    # STEP 9: Open Registration
-    print("\n[STEP 9] Open Programme Registration...")
-    res = client.put(f"/api/v1/events/{event_id}", json={"status": "REGISTRATION_OPEN"})
-    assert res.status_code == 200
-    assert res.json()["status"] == "REGISTRATION_OPEN"
-    print("  -> Programme status updated to REGISTRATION_OPEN.")
+    # Step 4: Open Registration
+    print("\n--- STEP 4: OPEN REGISTRATION ---")
+    st, upd_res = api_call(f"/events/{event_id}", method="PUT", data={"status": "REGISTRATION_OPEN"})
+    assert st == 200, f"Open registration failed: {st}, {upd_res}"
+    print(f"PASS: Event updated to Status={upd_res['status']}")
 
-    # STEP 10: Register Faculty
-    print("\n[STEP 10] Register Faculty (Dr. Ayesha Khan)...")
-    res = client.post(f"/api/v1/events/{event_id}/register", json={"faculty_id": 1})
-    assert res.status_code == 201
-    reg = res.json()
-    print(f"  -> Faculty {reg['faculty_name']} registered successfully. Reg Status: {reg['registration_status']}")
-
-    # STEP 11: Run FIND BEST RESOURCE PERSON
-    print("\n[STEP 11] Run: FIND BEST RESOURCE PERSON...")
-    res = client.post(f"/api/v1/agents/match-resource-person/{event_id}")
-    assert res.status_code == 200
-    matches = res.json()["matches"]
-    print(f"  -> Ranked {len(matches)} resource persons:")
-    for m in matches[:3]:
-        print(f"     1. {m['name']} ({m['organization']}) | Match Score: {m['match_score']} | Expertise: {m['expertise_match']} | Rating: {m['rating']}/5.0")
-        print(f"        Reason: {m['reason']}")
-
-    # STEP 12: Record Attendance
-    print("\n[STEP 12] Record Attendance for Faculty...")
-    res = client.post(f"/api/v1/attendance?event_id={event_id}", json={
-        "faculty_id": 1,
-        "attendance_status": "PRESENT",
-        "attendance_method": "QR"
+    # Step 5: Register Dr. Veda
+    print("\n--- STEP 5: REGISTER DR. VEDA ---")
+    st, reg_res = api_call(f"/events/{event_id}/register", method="POST", data={
+        "full_name": veda_name,
+        "faculty_code": veda_code,
+        "email": veda_email,
+        "department": "Computer Science & Engineering",
+        "designation": "Associate Professor",
+        "institution_name": "Vignan's Foundation for Science, Technology & Research",
+        "years_of_experience": 8.5,
+        "teaching_interests": "Artificial Intelligence, Machine Learning",
+        "research_interests": "Generative AI, Large Language Models",
+        "consent": True
     })
-    assert res.status_code == 201
-    print(f"  -> Attendance recorded via QR check-in: {res.json()['attendance_status']}")
+    assert st == 201, f"Registration failed: {st}, {reg_res}"
+    reg_id = reg_res["id"]
+    reg_code = reg_res["registration_code"]
+    qr_token = reg_res["qr_token"]
+    print(f"PASS: Registered Dr. Veda! Reg ID={reg_id}, Code={reg_code}, QR Token={qr_token}")
 
-    # STEP 13: Complete PRE Test
-    print("\n[STEP 13] Complete PRE Test (Diagnostic assessment)...")
-    pre_assess = client.get(f"/api/v1/events/{event_id}/assessments").json()
-    pre_obj = next(a for a in pre_assess if a["assessment_type"] == "PRE")
-    pre_qs = pre_obj.get("questions", [])
-    # Answer 1 correctly ('a') and 1 incorrectly ('c') to simulate ~50-54% baseline
-    pre_answers = {}
-    if len(pre_qs) >= 2:
-        pre_answers[str(pre_qs[0]["id"])] = "a" # correct
-        pre_answers[str(pre_qs[1]["id"])] = "c" # incorrect
+    # Step 6 & 7: Verify Unique Registration ID & QR Token
+    print("\n--- STEP 6 & 7: VERIFY REG ID & QR TOKEN ---")
+    assert reg_code.startswith("REG-VU2026-"), f"Unexpected code: {reg_code}"
+    assert ":" in qr_token, f"Unexpected token: {qr_token}"
+    print(f"PASS: Unique Code: {reg_code}, Secure QR Token: {qr_token[:25]}...")
+
+    # Step 8: Attendance Desk shows Dr. Veda
+    print("\n--- STEP 8: ATTENDANCE DESK SHOWS DR. VEDA ---")
+    st, att_list = api_call(f"/events/{event_id}/attendance")
+    assert st == 200, f"Get attendance failed: {st}, {att_list}"
+    # Registrations list check
+    st, reg_list = api_call(f"/events/{event_id}/registrations")
+    assert any(r["id"] == reg_id for r in reg_list), "Dr. Veda not in event registrations"
+    print(f"PASS: Attendance desk cohort includes Dr. Veda. Total Registered={len(reg_list)}")
+
+    # Step 9: Mark attendance manually
+    print("\n--- STEP 9: MARK ATTENDANCE MANUALLY ---")
+    # First create a session if none exist
+    st, ev_detail = api_call(f"/events/{event_id}")
+    sessions = ev_detail.get("sessions", [])
+    if not sessions:
+        st, sess_res = api_call(f"/events/{event_id}/sessions", method="POST", data={
+            "title": "Day 1 Morning: Generative AI Foundations",
+            "start_time": "09:30 AM",
+            "end_time": "12:30 PM",
+            "learning_objective": "Understand transformer foundations"
+        })
+        session_id = sess_res["id"]
     else:
-        pre_answers["1"] = "a"
+        session_id = sessions[0]["id"]
 
-    res = client.post(f"/api/v1/assessments/{pre_obj['id']}/submit", json={
-        "faculty_id": 1,
-        "answers": pre_answers
+    st, man_res = api_call("/attendance/manual", method="POST", data={
+        "event_id": event_id,
+        "registration_id": reg_id,
+        "session_id": session_id,
+        "attendance_status": "PRESENT"
     })
-    assert res.status_code == 200
-    pre_attempt = res.json()
-    print(f"  -> PRE-Assessment Submitted: Score {pre_attempt['score']} ({pre_attempt['percentage']}%)")
+    assert st == 200, f"Manual attendance failed: {st}, {man_res}"
+    print(f"PASS: Manual check-in recorded for Dr. Veda. Status={man_res['attendance_status']}")
 
-    # STEP 14: Complete POST Test
-    print("\n[STEP 14] Complete POST Test (Post-training competency)...")
-    post_obj = next(a for a in pre_assess if a["assessment_type"] == "POST")
-    post_qs = post_obj.get("questions", [])
-    # Answer all correctly to demonstrate high post test score (~86-100%)
-    post_answers = {str(q["id"]): "a" for q in post_qs}
-    res = client.post(f"/api/v1/assessments/{post_obj['id']}/submit", json={
-        "faculty_id": 1,
-        "answers": post_answers
+    # Step 10: Test QR attendance
+    print("\n--- STEP 10: TEST QR ATTENDANCE ---")
+    # Create second session to test QR
+    st, sess_res2 = api_call(f"/events/{event_id}/sessions", method="POST", data={
+        "title": "Day 1 Afternoon: LLM Prompt Tuning Lab",
+        "start_time": "02:00 PM",
+        "end_time": "05:00 PM",
+        "learning_objective": "Hands-on parameter efficient fine-tuning"
     })
-    assert res.status_code == 200
-    post_attempt = res.json()
-    print(f"  -> POST-Assessment Submitted: Score {post_attempt['score']} ({post_attempt['percentage']}%)")
+    session_id2 = sess_res2["id"]
 
-    # STEP 15: Show LEARNING GAIN
-    print("\n[STEP 15] Show: LEARNING GAIN...")
-    res = client.get(f"/api/v1/events/{event_id}/learning-impact")
-    assert res.status_code == 200
-    impact = res.json()
-    print(f"  -> Pre Assessment Average: {impact['pre_average']}%")
-    print(f"  -> Post Assessment Average: {impact['post_average']}%")
-    print(f"  -> LEARNING GAIN: +{impact['learning_gain_pp']} percentage points")
-    print(f"  -> Impact Level: {impact['impact_level']} | Attendance Rate: {impact['attendance_rate']}%")
+    st, qr_res = api_call("/attendance/qr-checkin", method="POST", data={
+        "event_id": event_id,
+        "session_id": session_id2,
+        "qr_token": qr_token
+    })
+    assert st == 200, f"QR attendance failed: {st}, {qr_res}"
+    print(f"PASS: QR check-in verified for Dr. Veda! Method={qr_res.get('attendance_method', 'QR')}")
 
-    # STEP 16: Submit Feedback
-    print("\n[STEP 16] Submit Participant Feedback...")
-    res = client.post(f"/api/v1/events/{event_id}/feedback", json={
-        "faculty_id": 1,
+    # Step 11 & 12: Create PRE Assessment & Questions
+    print("\n--- STEP 11 & 12: CREATE PRE ASSESSMENT & QUESTIONS ---")
+    st, pre_assess = api_call("/assessments", method="POST", data={
+        "event_id": event_id,
+        "assessment_type": "PRE",
+        "title": "Diagnostic Pre-Assessment: AI for Engineers",
+        "total_marks": 20.0,
+        "passing_marks": 10.0
+    })
+    assert st == 201, f"Create PRE assessment failed: {st}, {pre_assess}"
+    pre_id = pre_assess["id"]
+
+    st, q1 = api_call(f"/assessments/{pre_id}/questions", method="POST", data={
+        "question_text": "What attention mechanism is central to Transformer neural networks?",
+        "option_a": "Scaled Dot-Product Self-Attention",
+        "option_b": "Convolutional Pooling Attention",
+        "option_c": "Recurrent Gate Attention",
+        "option_d": "Markov Chain Attention",
+        "correct_option": "a",
+        "marks": 10.0,
+        "explanation": "Self-attention computes dynamic weights across all token pairs."
+    })
+    assert st == 201
+    st, q2 = api_call(f"/assessments/{pre_id}/questions", method="POST", data={
+        "question_text": "In few-shot prompt engineering, what does 'shot' refer to?",
+        "option_a": "Number of GPU training epochs",
+        "option_b": "Exemplar input-output demonstrations provided in context",
+        "option_c": "Learning rate magnitude",
+        "option_d": "Batch size multiplier",
+        "correct_option": "b",
+        "marks": 10.0,
+        "explanation": "Shots are in-context input/output examples."
+    })
+    assert st == 201
+    print(f"PASS: PRE Assessment created (ID {pre_id}) with 2 diagnostic questions.")
+
+    # Step 13 & 14: Take PRE Assessment & Store Score
+    print("\n--- STEP 13 & 14: TAKE PRE ASSESSMENT ---")
+    # Dr. Veda gets 1 correct, 1 incorrect on diagnostic pre-test (50%)
+    st, pre_sub = api_call(f"/assessments/{pre_id}/submit", method="POST", data={
+        "faculty_id": veda_id,
+        "answers": {
+            str(q1["id"]): "a", # correct
+            str(q2["id"]): "a"  # incorrect
+        }
+    })
+    assert st == 200, f"Submit PRE failed: {st}, {pre_sub}"
+    pre_score = pre_sub["percentage"]
+    print(f"PASS: PRE Assessment submitted. Score: {pre_score}% ({pre_sub['score']} / 20 Marks)")
+    assert pre_score == 50.0, f"Expected 50.0, got {pre_score}"
+
+    # Step 15: Create POST Assessment & Questions
+    print("\n--- STEP 15: CREATE POST ASSESSMENT & QUESTIONS ---")
+    st, post_assess = api_call("/assessments", method="POST", data={
+        "event_id": event_id,
+        "assessment_type": "POST",
+        "title": "Competency Post-Assessment: AI for Engineers",
+        "total_marks": 20.0,
+        "passing_marks": 10.0
+    })
+    assert st == 201, f"Create POST assessment failed: {st}, {post_assess}"
+    post_id = post_assess["id"]
+
+    st, pq1 = api_call(f"/assessments/{post_id}/questions", method="POST", data={
+        "question_text": "What parameter-efficient fine-tuning technique freezes backbone weights and trains rank decomposition matrices?",
+        "option_a": "Full Parameter Fine-Tuning",
+        "option_b": "LoRA (Low-Rank Adaptation)",
+        "option_c": "Quantized K-Means",
+        "option_d": "Random Matrix Masking",
+        "correct_option": "b",
+        "marks": 10.0,
+        "explanation": "LoRA decomposes weight updates into low-rank matrices."
+    })
+    assert st == 201
+    st, pq2 = api_call(f"/assessments/{post_id}/questions", method="POST", data={
+        "question_text": "What prompt technique forces an LLM to generate intermediate reasoning steps before arriving at an answer?",
+        "option_a": "Zero-shot direct prompting",
+        "option_b": "Chain-of-Thought (CoT) Prompting",
+        "option_c": "Greedy Top-K Sampling",
+        "option_d": "Temperature decay",
+        "correct_option": "b",
+        "marks": 10.0,
+        "explanation": "Chain-of-thought encourages reasoning pathways."
+    })
+    assert st == 201
+    print(f"PASS: POST Assessment created (ID {post_id}) with 2 competency questions.")
+
+    # Step 16 & 17: Take POST Assessment & Store Score
+    print("\n--- STEP 16 & 17: TAKE POST ASSESSMENT ---")
+    # Dr. Veda scores 100% on post-test after completing the training!
+    st, post_sub = api_call(f"/assessments/{post_id}/submit", method="POST", data={
+        "faculty_id": veda_id,
+        "answers": {
+            str(pq1["id"]): "b", # correct
+            str(pq2["id"]): "b"  # correct
+        }
+    })
+    assert st == 200, f"Submit POST failed: {st}, {post_sub}"
+    post_score = post_sub["percentage"]
+    print(f"PASS: POST Assessment submitted. Score: {post_score}% ({post_sub['score']} / 20 Marks)")
+    assert post_score == 100.0, f"Expected 100.0, got {post_score}"
+
+    # Step 18: Calculate Real Learning Gain
+    print("\n--- STEP 18: CALCULATE REAL LEARNING GAIN ---")
+    st, impact_data = api_call(f"/events/{event_id}/learning-impact")
+    assert st == 200, f"Get learning impact failed: {st}, {impact_data}"
+    gain_pp = impact_data["learning_gain_pp"]
+    print(f"PASS: Real Learning Gain calculated: Pre={impact_data['pre_average']}%, Post={impact_data['post_average']}%, Gain=+{gain_pp} percentage points!")
+    assert gain_pp == 50.0, f"Expected +50.0 pp learning gain, got {gain_pp}"
+
+    # Step 19 & 20: Submit Real Feedback & Analyze Feedback
+    print("\n--- STEP 19 & 20: SUBMIT & ANALYZE REAL FEEDBACK ---")
+    st, fb_res = api_call(f"/events/{event_id}/feedback", method="POST", data={
+        "faculty_id": veda_id,
         "content_rating": 5,
         "trainer_rating": 5,
         "relevance_rating": 5,
-        "practical_rating": 4,
-        "organization_rating": 5,
-        "comments": "Content highly relevant to modern engineering curriculum. Trainer highly rated and explained complex concepts clearly.",
-        "suggestions": "Practical activities could be extended in future editions to allow more hands-on experimentation."
+        "practical_rating": 5,
+        "organization_rating": 4,
+        "comments": "Exceptional hands-on laboratory sessions with clear LoRA and chain-of-thought demonstrations.",
+        "suggestions": "Allocate additional GPU credits for post-workshop project incubation."
     })
-    assert res.status_code == 201
-    print(f"  -> Feedback registered. Ratings: 5/5 Content, 5/5 Trainer, 4/5 Practical")
+    assert st == 201, f"Submit feedback failed: {st}, {fb_res}"
+    print(f"PASS: Feedback submitted by Dr. Veda. Overall={fb_res['content_rating']}/5")
 
-    # STEP 17: Run Feedback Intelligence
-    print("\n[STEP 17] Run: AI Feedback Intelligence...")
-    res = client.get(f"/api/v1/events/{event_id}/feedback-intelligence")
-    assert res.status_code == 200
-    fb_intel = res.json()
-    print(f"  -> OVERALL RATING: {fb_intel['overall_rating']} / 5.0")
-    print(f"     STRENGTHS: {'; '.join(fb_intel['positive_themes'])}")
-    print(f"     ISSUES: {'; '.join(fb_intel['negative_themes'])}")
-    print(f"     RECOMMENDATIONS: {'; '.join(fb_intel['recommended_improvements'])}")
+    st, intel_res = api_call(f"/events/{event_id}/feedback-intelligence")
+    assert st == 200, f"Get feedback intelligence failed: {st}, {intel_res}"
+    print(f"PASS: Feedback Intelligence computed: Overall Rating={intel_res['overall_rating']}/5.0 across {intel_res['total_responses']} response(s)")
+    assert intel_res["total_responses"] == 1
+    assert intel_res["has_feedback"] == True
 
-    # STEP 18: Generate Certificate
-    print("\n[STEP 18] Generate Certificate...")
-    res = client.post(f"/api/v1/events/{event_id}/generate-certificates")
-    assert res.status_code == 200
-    certs = res.json()
-    assert len(certs) > 0
-    cert = certs[0]
-    print(f"  -> Certificate Generated! Code: {cert['certificate_code']} | Token: {cert['verification_token']}")
-    
-    # Public verification verification
-    ver = client.get(f"/api/v1/certificates/verify/{cert['verification_token']}").json()
-    print(f"     Public Verification: Status '{ver['verification_status']}' for {ver['participant_name']} in '{ver['event_name']}'")
+    # Step 21: Create Skill Evidence
+    print("\n--- STEP 21: CREATE SKILL EVIDENCE ---")
+    st, ev_add = api_call(f"/faculty/{veda_id}/skill-evidence", method="POST", data={
+        "skill_name": "Generative AI",
+        "evidence_type": "ASSESSMENT_RESULT",
+        "evidence_reference": f"Completed POST Assessment for {ev_res['title']} with 100% score",
+        "score": 100.0,
+        "verified": True,
+        "verified_by": "Academic Assessment Council"
+    })
+    assert st == 201, f"Add skill evidence failed: {st}, {ev_add}"
+    print(f"PASS: Verified skill evidence logged for 'Generative AI' (Score: 100.0%)")
 
-    # STEP 19: Open Digital Passport
-    print("\n[STEP 19] Open Faculty Digital Passport...")
-    res = client.get("/api/v1/faculty/1/passport")
-    assert res.status_code == 200
-    passport = res.json()
-    print(f"  -> Digital Passport: {passport['full_name']} ({passport['department_name']})")
-    print(f"     FDPs Completed: {passport['fdps_completed']} | Training Hours: {passport['total_training_hours']} hrs | Certificates: {passport['certificates_count']}")
-    print(f"     Skills Acquired: {', '.join(passport['skills_acquired'])}")
-    print(f"     Avg Learning Gain: +{passport['average_learning_gain_pp']} percentage points")
-    print(f"     Compliance: {passport['compliance']['completed_hours']}/{passport['compliance']['required_hours']} hrs ({passport['compliance']['status']})")
+    # Step 22: Record Teaching Impact
+    print("\n--- STEP 22: RECORD TEACHING IMPACT ---")
+    st, impact_rec = api_call(f"/faculty/{veda_id}/teaching-impact", method="POST", data={
+        "event_id": event_id,
+        "skill_name": "Generative AI",
+        "application_type": "CLASSROOM",
+        "application_description": "Integrated LLM prompt debugging into B.Tech CSE Advanced Machine Learning laboratory curriculum.",
+        "self_rating": 5,
+        "impact_status": "VERIFIED"
+    })
+    assert st == 201, f"Record teaching impact failed: {st}, {impact_rec}"
+    print(f"PASS: Teaching impact recorded and verified in classroom teaching!")
 
-    # STEP 20: Open Strategy Dashboard
-    print("\n[STEP 20] Open University Training Strategy Dashboard...")
-    res = client.get("/api/v1/dashboard/strategy")
-    assert res.status_code == 200
-    strat = res.json()
-    print("  -> University Strategy Analytics loaded:")
-    print("     Top Training Demands:")
-    for d in strat["training_demand"][:3]:
-        print(f"       * {d['topic']} (Demand Score: {d['demand_score']}) -> Targets: {', '.join(d['target_depts'])}")
-    print(f"     Department Development Scores:")
-    for ds in strat["department_development_score"]:
-        print(f"       * {ds['department']}: Score {ds['development_score']}/100 ({ds['training_hours_completed']} hrs)")
+    # Step 23: Generate Certificate
+    print("\n--- STEP 23: GENERATE CERTIFICATE ---")
+    st, cert_list = api_call(f"/events/{event_id}/generate-certificates", method="POST", data={
+        "faculty_ids": [veda_id]
+    })
+    assert st == 200, f"Generate certificate failed: {st}, {cert_list}"
+    assert len(cert_list) >= 1, "Certificate was not generated for Dr. Veda"
+    cert = cert_list[0]
+    cert_code = cert["certificate_code"]
+    cert_tok = cert["verification_token"]
+    print(f"PASS: Certificate generated! Code={cert_code}, Token={cert_tok}")
 
-    print("\n" + "=" * 70)
-    print("DEMO VERIFICATION COMPLETE: ALL 20 SCENARIO STEPS SUCCEEDED!")
-    print("=" * 70)
+    # Step 24: Public Certificate Verification
+    print("\n--- STEP 24: PUBLIC CERTIFICATE VERIFICATION ---")
+    st, verify_res = api_call(f"/certificates/verify/{cert_tok}")
+    assert st == 200, f"Verify certificate failed: {st}, {verify_res}"
+    assert verify_res["is_valid"] == True
+    assert verify_res["participant_name"] == veda_name
+    print(f"PASS: Token-verifiable certificate verified successfully: Status={verify_res['verification_status']}")
+
+    # Step 25: Digital Passport Updates
+    print("\n--- STEP 25: DIGITAL PASSPORT UPDATES ---")
+    st, pass_res = api_call(f"/faculty/{veda_id}/digital-passport")
+    assert st == 200, f"Get passport failed: {st}, {pass_res}"
+    print(f"PASS: Digital Passport for {pass_res['full_name']}:")
+    print(f"      - FDPs Completed: {pass_res['fdps_completed']}")
+    print(f"      - Training Hours: {pass_res['total_training_hours']} hrs")
+    print(f"      - Certificates: {pass_res['certificates_count']}")
+    print(f"      - Average Learning Gain: +{pass_res['average_learning_gain_pp']} pp")
+    print(f"      - Verified Skills: {len(pass_res['verified_skills'])}")
+    print(f"      - Applied Learning Records: {len(pass_res['applied_learning'])}")
+    assert pass_res["certificates_count"] >= 1
+    assert pass_res["average_learning_gain_pp"] == 50.0
+
+    # Step 26: Compliance Updates
+    print("\n--- STEP 26: COMPLIANCE UPDATES ---")
+    st, comp_res = api_call(f"/faculty/{veda_id}/compliance")
+    assert st == 200, f"Get compliance failed: {st}, {comp_res}"
+    print(f"PASS: Faculty Compliance Status={comp_res['status']}, Completed={comp_res['completed_hours']}/{comp_res['required_hours']} hrs ({comp_res['compliance_percentage']}%)")
+
+    # Step 27: FDP Effectiveness Updates
+    print("\n--- STEP 27: FDP EFFECTIVENESS UPDATES ---")
+    # Complete event to evaluate ROI
+    api_call(f"/events/{event_id}", method="PUT", data={"status": "COMPLETED"})
+    st, eff_res = api_call(f"/events/{event_id}/effectiveness")
+    assert st == 200, f"Get effectiveness failed: {st}, {eff_res}"
+    print(f"PASS: FDP Effectiveness calculated from real metrics: Overall Score={eff_res['overall_effectiveness_score']}/100, Impact={eff_res['impact_level']}")
+    assert eff_res["overall_effectiveness_score"] > 0
+
+    # Step 28: Department Skill Heatmap Updates
+    print("\n--- STEP 28: HEATMAP UPDATES ---")
+    st, hm_res = api_call("/agents/department-heatmap")
+    assert st == 200, f"Get heatmap failed: {st}, {hm_res}"
+    print(f"PASS: Heatmap updated with real departmental metrics. Readiness index: {hm_res['summary']['overall_readiness_index']}")
+
+    # Step 29: Strategy Dashboard Updates
+    print("\n--- STEP 29: STRATEGY DASHBOARD UPDATES ---")
+    st, strat_res = api_call("/dashboard/strategy-analytics")
+    assert st == 200, f"Get strategy analytics failed: {st}, {strat_res}"
+    print(f"PASS: Strategy Dashboard loaded real metrics:")
+    print(f"      - Total Faculty: {strat_res['summary']['total_faculty']}")
+    print(f"      - Certificates: {strat_res['summary']['certificates_count']}")
+    print(f"      - Learning Gains tracked: {len(strat_res['learning_gain_by_fdp'])}")
+    print(f"      - Training Demand items: {len(strat_res['training_demand'])}")
+
+    # Step 30: Database Persistence Check
+    print("\n--- STEP 30: DATABASE PERSISTENCE VERIFICATION ---")
+    conn2 = sqlite3.connect("backend/facultyforge.db")
+    c2 = conn2.cursor()
+    c2.execute("SELECT COUNT(*) FROM registrations WHERE faculty_id = ? AND event_id = ?", (veda_id, event_id))
+    db_reg_count = c2.fetchone()[0]
+    c2.execute("SELECT COUNT(*) FROM attendances WHERE faculty_id = ? AND event_id = ?", (veda_id, event_id))
+    db_att_count = c2.fetchone()[0]
+    c2.execute("SELECT COUNT(*) FROM assessment_attempts WHERE faculty_id = ?", (veda_id,))
+    db_att_attempts = c2.fetchone()[0]
+    c2.execute("SELECT COUNT(*) FROM certificates WHERE faculty_id = ? AND event_id = ?", (veda_id, event_id))
+    db_cert_count = c2.fetchone()[0]
+    c2.execute("SELECT COUNT(*) FROM feedbacks WHERE faculty_id = ? AND event_id = ?", (veda_id, event_id))
+    db_fb_count = c2.fetchone()[0]
+    c2.execute("SELECT COUNT(*) FROM skill_evidence WHERE faculty_id = ?", (veda_id,))
+    db_ev_count = c2.fetchone()[0]
+    c2.execute("SELECT COUNT(*) FROM teaching_impacts WHERE faculty_id = ?", (veda_id,))
+    db_imp_count = c2.fetchone()[0]
+    conn2.close()
+
+    print(f"PASS: Persistent records confirmed in SQLite:")
+    print(f"      - Registrations in DB: {db_reg_count}")
+    print(f"      - Attendances in DB: {db_att_count}")
+    print(f"      - Assessment Attempts in DB: {db_att_attempts}")
+    print(f"      - Certificates in DB: {db_cert_count}")
+    print(f"      - Feedback in DB: {db_fb_count}")
+    print(f"      - Skill Evidence in DB: {db_ev_count}")
+    print(f"      - Teaching Impact in DB: {db_imp_count}")
+
+    assert db_reg_count >= 1
+    assert db_att_count >= 2
+    assert db_att_attempts >= 2
+    assert db_cert_count >= 1
+    assert db_fb_count >= 1
+    assert db_ev_count >= 1
+    assert db_imp_count >= 1
+
+    print("\n==================================================")
+    print("ALL 30 STEPS OF DR. VEDA TEST JOURNEY PASSED 100%!")
+    print("==================================================")
 
 if __name__ == "__main__":
-    run_20_step_demo()
+    run()

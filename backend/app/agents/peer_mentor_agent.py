@@ -38,9 +38,18 @@ class PeerMentorAgent:
             if gaps:
                 target_gaps = [g.skill_name for g in gaps]
             else:
-                target_gaps = ["Research Methodology", "Generative AI"]
+                target_gaps = []
 
-        primary_gap = target_gaps[0] if target_gaps else "Research Methodology"
+        if not target_gaps:
+            return {
+                "faculty_id": faculty.id,
+                "faculty_name": faculty.full_name,
+                "target_skill_gap": None,
+                "mentor_matches": [],
+                "message": "Faculty member has no active competency gaps requiring peer mentorship."
+            }
+
+        primary_gap = target_gaps[0]
 
         # Search other active faculty
         candidates = db.query(Faculty).filter(
@@ -66,21 +75,6 @@ class PeerMentorAgent:
 
         # Sort matches by score descending
         matches.sort(key=lambda x: x["match_score"], reverse=True)
-
-        # Ensure we always provide strong recommendations if candidates exist
-        if not matches and candidates:
-            # Pick the most senior candidate as a general academic mentor
-            best_senior = max(candidates, key=lambda c: c.years_of_experience or 0)
-            matches.append({
-                "mentor_faculty_id": best_senior.id,
-                "mentor_name": best_senior.full_name,
-                "match_score": 82.0,
-                "skill_level": "ADVANCED",
-                "department": best_senior.department.name if best_senior.department else "General",
-                "designation": best_senior.designation,
-                "years_of_experience": best_senior.years_of_experience,
-                "reason": f"Senior faculty advisor with {best_senior.years_of_experience} years academic experience and demonstrated mentorship capability."
-            })
 
         # Log agent analysis
         try:

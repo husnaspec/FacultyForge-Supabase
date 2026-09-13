@@ -12,10 +12,12 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     return dashboard_service.get_summary_metrics(db)
 
 @router.get("/dashboard/strategy")
+@router.get("/dashboard/strategy-analytics")
 def get_dashboard_strategy(db: Session = Depends(get_db)):
     return dashboard_service.get_strategy_analytics(db)
 
 @router.get("/dashboard/skill-heatmap")
+@router.get("/dashboard/department-heatmap")
 def get_dashboard_skill_heatmap(
     department_id: Optional[int] = None,
     skill_category: Optional[str] = None,

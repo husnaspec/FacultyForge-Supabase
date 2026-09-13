@@ -17,7 +17,7 @@ import {
 export default function AssessmentsPage() {
   const [searchParams] = useSearchParams();
   const initialEventId = searchParams.get('event_id');
-  const { activeFacultyId } = useAuth();
+  const { activeFacultyId, currentFaculty } = useAuth();
 
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(initialEventId || '');
@@ -31,6 +31,74 @@ export default function AssessmentsPage() {
   const [attemptResult, setAttemptResult] = useState(null);
   const [submittingTest, setSubmittingTest] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Coordinator Assessment & Question Modals
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    assessment_type: 'PRE',
+    title: '',
+    total_marks: 30,
+    passing_marks: 15,
+  });
+  const [creatingAssessment, setCreatingAssessment] = useState(false);
+
+  const [showAddQuestionModal, setShowAddQuestionModal] = useState(false);
+  const [selectedAssessmentForQuestion, setSelectedAssessmentForQuestion] = useState(null);
+  const [questionForm, setQuestionForm] = useState({
+    question_text: '',
+    option_a: '',
+    option_b: '',
+    option_c: '',
+    option_d: '',
+    correct_option: 'a',
+    marks: 5,
+    explanation: '',
+  });
+  const [addingQuestion, setAddingQuestion] = useState(false);
+
+  const handleCreateAssessment = async (e) => {
+    e.preventDefault();
+    if (!selectedEventId) return;
+    setCreatingAssessment(true);
+    try {
+      await api.createAssessment({
+        event_id: Number(selectedEventId),
+        ...createForm,
+      });
+      setShowCreateModal(false);
+      setCreateForm({ assessment_type: 'POST', title: '', total_marks: 30, passing_marks: 15 });
+      loadAssessmentsAndImpact(selectedEventId);
+    } catch (err) {
+      alert(err.message || 'Failed to create assessment');
+    } finally {
+      setCreatingAssessment(false);
+    }
+  };
+
+  const handleAddQuestion = async (e) => {
+    e.preventDefault();
+    if (!selectedAssessmentForQuestion) return;
+    setAddingQuestion(true);
+    try {
+      await api.addAssessmentQuestion(selectedAssessmentForQuestion.id, questionForm);
+      setShowAddQuestionModal(false);
+      setQuestionForm({
+        question_text: '',
+        option_a: '',
+        option_b: '',
+        option_c: '',
+        option_d: '',
+        correct_option: 'a',
+        marks: 5,
+        explanation: '',
+      });
+      loadAssessmentsAndImpact(selectedEventId);
+    } catch (err) {
+      alert(err.message || 'Failed to add question');
+    } finally {
+      setAddingQuestion(false);
+    }
+  };
 
   useEffect(() => {
     loadEvents();
@@ -128,7 +196,7 @@ export default function AssessmentsPage() {
       </div>
 
       {/* Learning Gain Summary Banner */}
-      {learningImpact && (
+      {learningImpact && learningImpact.has_data ? (
         <div
           className="card"
           style={{
@@ -167,7 +235,7 @@ export default function AssessmentsPage() {
             <div>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>LEARNING GAIN (DELTA)</span>
               <p style={{ fontSize: '1.75rem', fontWeight: 900, color: '#34d399' }}>
-                +{learningImpact.learning_gain_pp} pp
+                {learningImpact.learning_gain_pp >= 0 ? `+${learningImpact.learning_gain_pp}` : learningImpact.learning_gain_pp} pp
               </p>
             </div>
             <div>
@@ -182,42 +250,84 @@ export default function AssessmentsPage() {
             {learningImpact.explanation}
           </p>
         </div>
+      ) : (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', border: '1px dashed var(--border-subtle)' }}>
+          <FileQuestion size={36} style={{ color: 'var(--text-muted)', margin: '0 auto 0.75rem' }} />
+          <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.35rem' }}>No Assessment Data Available</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', maxWidth: '600px', margin: '0 auto' }}>
+            {learningImpact?.explanation || "No assessment attempts recorded yet for this programme. Pre and post assessment scores will populate once participants complete the tests."}
+          </p>
+        </div>
       )}
+
+      {/* Assessments Section Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Programme Tests & Quizzes</h2>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="btn btn-outline btn-sm"
+        >
+          + Create Assessment
+        </button>
+      </div>
 
       {/* Assessments List */}
       <div className="grid-2">
-        {assessments.map((a) => (
-          <div
-            key={a.id}
-            className="card"
-            style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}
-          >
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span className={`badge ${a.assessment_type === 'PRE' ? 'badge-low' : 'badge-completed'}`}>
-                  {a.assessment_type}-ASSESSMENT
-                </span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  Passing: {a.passing_marks} / {a.total_marks} Marks
-                </span>
+        {assessments.length === 0 ? (
+          <div className="card" style={{ padding: '2.5rem', textAlign: 'center', border: '1px dashed var(--border-subtle)', gridColumn: 'span 2' }}>
+            <GraduationCap size={40} style={{ color: 'var(--text-muted)', margin: '0 auto 0.75rem' }} />
+            <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.35rem' }}>No Assessments Configured</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              Coordinators can create diagnostic PRE assessments and competency POST assessments to evaluate participant progress.
+            </p>
+            <button onClick={() => setShowCreateModal(true)} className="btn btn-primary btn-sm">
+              Create First Assessment
+            </button>
+          </div>
+        ) : (
+          assessments.map((a) => (
+            <div
+              key={a.id}
+              className="card"
+              style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <span className={`badge ${a.assessment_type === 'PRE' ? 'badge-low' : 'badge-completed'}`}>
+                    {a.assessment_type}-ASSESSMENT
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Passing: {a.passing_marks} / {a.total_marks} Marks
+                  </span>
+                </div>
+
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>{a.title}</h3>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                  Contains {a.questions?.length || 0} multiple choice diagnostic questions.
+                </p>
               </div>
 
-              <h3 style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>{a.title}</h3>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                Contains {a.questions?.length || 0} multiple choice diagnostic questions.
-              </p>
+              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  onClick={() => {
+                    setSelectedAssessmentForQuestion(a);
+                    setShowAddQuestionModal(true);
+                  }}
+                  className="btn btn-outline btn-xs"
+                >
+                  + Add Question
+                </button>
+                <button
+                  onClick={() => startTest(a)}
+                  className="btn btn-primary btn-sm"
+                  disabled={!a.questions || a.questions.length === 0}
+                >
+                  <span>Take {a.assessment_type} Assessment</span>
+                </button>
+              </div>
             </div>
-
-            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => startTest(a)}
-                className="btn btn-primary btn-sm"
-              >
-                <span>Take {a.assessment_type} Test (Demo)</span>
-              </button>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Interactive Test Modal */}
@@ -248,7 +358,7 @@ export default function AssessmentsPage() {
             <div>
               <h3 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Assessment Submitted!</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                Participant: {attemptResult.faculty_name || 'Dr. Ayesha Khan'}
+                Participant: {attemptResult.faculty_name || (currentFaculty ? currentFaculty.full_name : 'Registered Participant')}
               </p>
             </div>
 
@@ -269,9 +379,14 @@ export default function AssessmentsPage() {
           <form onSubmit={handleSubmitTest} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {errorMsg && <div className="alert alert-danger">{errorMsg}</div>}
 
-            <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              Select the best answer for each question. Answers will be scored dynamically.
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                Select the best answer for each question. Answers are scored automatically.
+              </p>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {takingAssessment?.questions?.length || 0} Questions Total
+              </span>
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '55vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
               {takingAssessment?.questions?.map((q, idx) => (
@@ -333,6 +448,185 @@ export default function AssessmentsPage() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Create Assessment Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create Programme Assessment"
+        maxWidth="550px"
+      >
+        <form onSubmit={handleCreateAssessment} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div>
+            <label className="form-label">Assessment Type *</label>
+            <select
+              className="form-select"
+              value={createForm.assessment_type}
+              onChange={(e) => setCreateForm({ ...createForm, assessment_type: e.target.value })}
+              required
+            >
+              <option value="PRE">PRE-ASSESSMENT (Diagnostic baseline)</option>
+              <option value="POST">POST-ASSESSMENT (Post-training competency)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="form-label">Assessment Title *</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="e.g. Diagnostic Pre-Assessment: AI for Engineers"
+              value={createForm.title}
+              onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="grid-2">
+            <div>
+              <label className="form-label">Total Marks *</label>
+              <input
+                type="number"
+                className="form-input"
+                value={createForm.total_marks}
+                onChange={(e) => setCreateForm({ ...createForm, total_marks: Number(e.target.value) })}
+                required
+              />
+            </div>
+            <div>
+              <label className="form-label">Passing Marks *</label>
+              <input
+                type="number"
+                className="form-input"
+                value={createForm.passing_marks}
+                onChange={(e) => setCreateForm({ ...createForm, passing_marks: Number(e.target.value) })}
+                required
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary btn-sm">
+              Cancel
+            </button>
+            <button type="submit" disabled={creatingAssessment} className="btn btn-primary btn-sm">
+              {creatingAssessment ? 'Creating...' : 'Create Assessment'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Add Question Modal */}
+      <Modal
+        isOpen={showAddQuestionModal}
+        onClose={() => setShowAddQuestionModal(false)}
+        title={`Add Question to ${selectedAssessmentForQuestion?.title || 'Assessment'}`}
+        maxWidth="600px"
+      >
+        <form onSubmit={handleAddQuestion} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div>
+            <label className="form-label">Question Text *</label>
+            <textarea
+              className="form-textarea"
+              rows={2}
+              placeholder="Enter the question statement..."
+              value={questionForm.question_text}
+              onChange={(e) => setQuestionForm({ ...questionForm, question_text: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="grid-2">
+            <div>
+              <label className="form-label">Option A *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={questionForm.option_a}
+                onChange={(e) => setQuestionForm({ ...questionForm, option_a: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="form-label">Option B *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={questionForm.option_b}
+                onChange={(e) => setQuestionForm({ ...questionForm, option_b: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="form-label">Option C *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={questionForm.option_c}
+                onChange={(e) => setQuestionForm({ ...questionForm, option_c: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="form-label">Option D *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={questionForm.option_d}
+                onChange={(e) => setQuestionForm({ ...questionForm, option_d: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid-2">
+            <div>
+              <label className="form-label">Correct Option *</label>
+              <select
+                className="form-select"
+                value={questionForm.correct_option}
+                onChange={(e) => setQuestionForm({ ...questionForm, correct_option: e.target.value })}
+                required
+              >
+                <option value="a">Option A</option>
+                <option value="b">Option B</option>
+                <option value="c">Option C</option>
+                <option value="d">Option D</option>
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Marks *</label>
+              <input
+                type="number"
+                className="form-input"
+                value={questionForm.marks}
+                onChange={(e) => setQuestionForm({ ...questionForm, marks: Number(e.target.value) })}
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">Explanation (Optional)</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Why this answer is correct..."
+              value={questionForm.explanation}
+              onChange={(e) => setQuestionForm({ ...questionForm, explanation: e.target.value })}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <button type="button" onClick={() => setShowAddQuestionModal(false)} className="btn btn-secondary btn-sm">
+              Cancel
+            </button>
+            <button type="submit" disabled={addingQuestion} className="btn btn-primary btn-sm">
+              {addingQuestion ? 'Saving...' : 'Add Question'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

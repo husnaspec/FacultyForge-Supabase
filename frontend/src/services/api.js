@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
@@ -110,12 +110,22 @@ export const api = {
   rejectProposal: (id, payload) => request(`/proposals/${id}/reject`, { method: 'POST', body: JSON.stringify(payload) }),
   requestChangesProposal: (id, payload) => request(`/proposals/${id}/request-changes`, { method: 'POST', body: JSON.stringify(payload) }),
 
+  // Faculty Lookup
+  lookupFaculty: (query) => request(`/faculty/lookup?query=${encodeURIComponent(query)}`),
+
   // Registrations
-  registerForEvent: (eventId, facultyId) =>
-    request(`/events/${eventId}/register`, { method: 'POST', body: JSON.stringify({ faculty_id: facultyId }) }),
+  registerForEvent: (eventId, payload) =>
+    request(`/events/${eventId}/register`, {
+      method: 'POST',
+      body: JSON.stringify(typeof payload === 'object' && payload !== null ? payload : { faculty_id: payload })
+    }),
   getEventRegistrations: (eventId) => request(`/events/${eventId}/registrations`),
 
   // Attendance
+  qrCheckIn: (payload) =>
+    request('/attendance/qr-checkin', { method: 'POST', body: JSON.stringify(payload) }),
+  manualAttendance: (payload) =>
+    request('/attendance/manual', { method: 'POST', body: JSON.stringify(payload) }),
   recordAttendance: (eventId, payload) =>
     request(`/attendance?event_id=${eventId}`, { method: 'POST', body: JSON.stringify(payload) }),
   recordBulkAttendance: (payload) => request('/attendance/bulk', { method: 'POST', body: JSON.stringify(payload) }),
@@ -200,6 +210,9 @@ export const api = {
     request(`/faculty/${facultyId}/teaching-impact`, { method: 'POST', body: JSON.stringify(payload) }),
   getFacultyTeachingImpact: (facultyId) => request(`/faculty/${facultyId}/teaching-impact`),
   getEventTeachingImpact: (eventId) => request(`/events/${eventId}/teaching-impact`),
+  verifyTeachingImpact: (impactId, payload = {}) =>
+    request(`/teaching-impact/${impactId}/verify`, { method: 'POST', body: JSON.stringify(payload) }),
+  getFacultyProgrammes: (facultyId) => request(`/faculty/${facultyId}/programmes`),
 
   // FDP Effectiveness
   getEventEffectiveness: (eventId) => request(`/events/${eventId}/effectiveness`),

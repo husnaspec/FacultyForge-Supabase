@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.db.session import get_db
 from app.models.faculty import Faculty
 from app.models.department import Department
@@ -10,7 +10,7 @@ from app.schemas import (
     FacultyCreate, FacultyUpdate, FacultyResponse,
     DigitalPassportResponse, SkillGapItem, TrainingRecommendationItem,
     SkillEvidenceCreate, SkillEvidenceResponse, VerifiedSkillItem,
-    TeachingImpactCreate, TeachingImpactResponse
+    TeachingImpactCreate, TeachingImpactResponse, TeachingImpactVerify
 )
 from app.services.passport_service import passport_service
 from app.services.compliance_service import compliance_service
@@ -67,6 +67,43 @@ def list_faculty(
         res.append(resp)
     return res
 
+@router.get("/faculty/lookup")
+def lookup_faculty(
+    code: Optional[str] = None,
+    email: Optional[str] = None,
+    query: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    from sqlalchemy import or_
+    search_val = (query or code or email or "").strip()
+    if not search_val:
+        return {"found": False, "message": "No search parameter provided."}
+
+    conds = [
+        Faculty.faculty_code.ilike(search_val),
+        Faculty.email.ilike(search_val)
+    ]
+    faculty = db.query(Faculty).filter(or_(*conds)).first()
+    if not faculty:
+        return {"found": False}
+
+    dept_code = faculty.department.code if faculty.department else ""
+    dept_name = faculty.department.name if faculty.department else ""
+    return {
+        "found": True,
+        "faculty_id": faculty.id,
+        "full_name": faculty.full_name,
+        "faculty_code": faculty.faculty_code,
+        "email": faculty.email,
+        "phone": getattr(faculty, "phone", "") or "",
+        "department": dept_code or dept_name,
+        "designation": faculty.designation or "Assistant Professor",
+        "institution_name": "Vignan's University",
+        "years_of_experience": getattr(faculty, "years_of_experience", 0.0) or 0.0,
+        "teaching_interests": faculty.teaching_interests or "",
+        "research_interests": faculty.research_interests or ""
+    }
+
 @router.get("/faculty/{id}", response_model=FacultyResponse)
 def get_faculty(id: int, db: Session = Depends(get_db)):
     faculty = db.query(Faculty).filter(Faculty.id == id).first()
@@ -106,6 +143,7 @@ def deactivate_faculty(id: int, db: Session = Depends(get_db)):
     return {"message": f"Faculty {faculty.full_name} deactivated successfully."}
 
 @router.get("/faculty/{id}/passport", response_model=DigitalPassportResponse)
+@router.get("/faculty/{id}/digital-passport", response_model=DigitalPassportResponse)
 def get_faculty_passport(id: int, db: Session = Depends(get_db)):
     try:
         return passport_service.get_digital_passport(db, id)
@@ -211,6 +249,19 @@ def get_faculty_verified_skills(
 
 # ======================= TEACHING IMPACT ENDPOINTS =======================
 
+# ======================= TEACHING IMPACT ENDPOINTS =======================
+
+def _build_impact_response(imp: TeachingImpact) -> TeachingImpactResponse:
+    resp = TeachingImpactResponse.from_orm(imp)
+    resp.faculty_name = imp.faculty.full_name if imp.faculty else None
+    resp.event_title = imp.event.title if imp.event else None
+    resp.description = imp.application_description
+    resp.evidence_reference = imp.evidence_url
+    resp.status = imp.impact_status
+    resp.verified_at = imp.verified_at
+    resp.verified_by = imp.verified_by
+    return resp
+
 @router.post("/faculty/{id}/teaching-impact", response_model=TeachingImpactResponse, status_code=status.HTTP_201_CREATED)
 def record_teaching_impact(
     id: int,
@@ -221,47 +272,83 @@ def record_teaching_impact(
     if not faculty:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty not found.")
 
-    if impact_in.event_id:
-        ev = db.query(Event).filter(Event.id == impact_in.event_id).first()
+    desc = (impact_in.description or impact_in.application_description or "").strip()
+    if not desc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Description is required.")
+
+    ev_id = impact_in.event_id
+    if ev_id:
+        ev = db.query(Event).filter(Event.id == ev_id).first()
         if not ev:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Event does not exist.")
 
+    # Duplicate protection: prevent repeated clicks within 60s
+    recent_dup = db.query(TeachingImpact).filter(
+        TeachingImpact.faculty_id == id,
+        TeachingImpact.skill_name.ilike(impact_in.skill_name.strip()),
+        TeachingImpact.application_type == impact_in.application_type,
+        TeachingImpact.application_description == desc,
+        TeachingImpact.created_at >= datetime.utcnow() - timedelta(seconds=60)
+    ).first()
+    if recent_dup:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A duplicate teaching impact record was recently submitted. Please wait before re-submitting."
+        )
+
+    ev_ref = impact_in.evidence_reference or impact_in.evidence_url
+    status_val = (impact_in.status or impact_in.impact_status or "APPLIED").upper()
+    if status_val not in ["PLANNED", "APPLIED", "VERIFIED"]:
+        status_val = "APPLIED"
+
+    verified_at = datetime.utcnow() if status_val == "VERIFIED" else None
+    verified_by = "Academic / HOD Review" if status_val == "VERIFIED" else None
+
     impact = TeachingImpact(
         faculty_id=id,
-        event_id=impact_in.event_id,
-        skill_name=impact_in.skill_name,
+        event_id=ev_id,
+        skill_name=impact_in.skill_name.strip(),
         application_type=impact_in.application_type,
-        application_description=impact_in.application_description,
-        evidence_url=impact_in.evidence_url,
-        self_rating=impact_in.self_rating,
+        application_description=desc,
+        evidence_url=ev_ref.strip() if ev_ref else None,
+        self_rating=float(impact_in.self_rating or 4.0),
         reviewer_rating=impact_in.reviewer_rating,
-        impact_status=impact_in.impact_status,
+        impact_status=status_val,
         applied_at=impact_in.applied_at or datetime.utcnow(),
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
+        verified_at=verified_at,
+        verified_by=verified_by
     )
     db.add(impact)
     db.commit()
     db.refresh(impact)
 
-    # Also record practical activity evidence automatically!
+    # Also log practical activity evidence automatically
     try:
         skill_evidence_service.add_evidence(
             db,
             faculty_id=id,
-            skill_name=impact_in.skill_name,
+            skill_name=impact.skill_name,
             evidence_type="PRACTICAL_ACTIVITY",
-            evidence_reference=f"Applied in {impact_in.application_type}: {impact_in.application_description[:80]}",
-            score=impact_in.self_rating * 20.0, # map 1-5 to 20-100%
-            verified=True,
-            verified_by="HOD Classroom Review"
+            evidence_reference=f"Applied in {impact.application_type}: {desc[:80]}",
+            score=impact.self_rating * 20.0,
+            verified=(status_val == "VERIFIED"),
+            verified_by="HOD Classroom Review" if status_val == "VERIFIED" else None
         )
     except Exception:
         pass
 
-    resp = TeachingImpactResponse.from_orm(impact)
-    resp.faculty_name = faculty.full_name
-    resp.event_title = impact.event.title if impact.event else None
-    return resp
+    return _build_impact_response(impact)
+
+@router.post("/teaching-impact", response_model=TeachingImpactResponse, status_code=status.HTTP_201_CREATED)
+def create_teaching_impact_standalone(
+    impact_in: TeachingImpactCreate,
+    db: Session = Depends(get_db)
+):
+    fac_id = impact_in.faculty_id
+    if not fac_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="faculty_id is required in request body.")
+    return record_teaching_impact(id=fac_id, impact_in=impact_in, db=db)
 
 @router.get("/faculty/{id}/teaching-impact", response_model=List[TeachingImpactResponse])
 def get_faculty_teaching_impact(
@@ -273,10 +360,96 @@ def get_faculty_teaching_impact(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty not found.")
 
     impacts = db.query(TeachingImpact).filter(TeachingImpact.faculty_id == id).order_by(TeachingImpact.created_at.desc()).all()
-    res = []
-    for imp in impacts:
-        resp = TeachingImpactResponse.from_orm(imp)
-        resp.faculty_name = faculty.full_name
-        resp.event_title = imp.event.title if imp.event else None
-        res.append(resp)
-    return res
+    return [_build_impact_response(imp) for imp in impacts]
+
+@router.get("/teaching-impact", response_model=List[TeachingImpactResponse])
+def list_teaching_impacts(
+    faculty_id: Optional[int] = None,
+    event_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(TeachingImpact)
+    if faculty_id:
+        query = query.filter(TeachingImpact.faculty_id == faculty_id)
+    if event_id:
+        query = query.filter(TeachingImpact.event_id == event_id)
+    impacts = query.order_by(TeachingImpact.created_at.desc()).all()
+    return [_build_impact_response(imp) for imp in impacts]
+
+@router.put("/teaching-impact/{id}/verify", response_model=TeachingImpactResponse)
+@router.post("/teaching-impact/{id}/verify", response_model=TeachingImpactResponse)
+def verify_teaching_impact(
+    id: int,
+    req: Optional[TeachingImpactVerify] = None,
+    db: Session = Depends(get_db)
+):
+    impact = db.query(TeachingImpact).filter(TeachingImpact.id == id).first()
+    if not impact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teaching impact record not found.")
+
+    impact.impact_status = "VERIFIED"
+    impact.verified_at = datetime.utcnow()
+    impact.verified_by = (req.verified_by if req and req.verified_by else "HOD / IQAC Review")
+    if req and req.reviewer_rating is not None:
+        impact.reviewer_rating = req.reviewer_rating
+
+    db.commit()
+    db.refresh(impact)
+    return _build_impact_response(impact)
+
+@router.get("/faculty/{id}/programmes")
+def get_faculty_programmes(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    faculty = db.query(Faculty).filter(Faculty.id == id).first()
+    if not faculty:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty not found.")
+
+    from app.models.registration import Registration
+    from app.models.attendance import Attendance
+
+    events_map = {}
+
+    # 1. Registered programmes
+    regs = db.query(Registration).filter(
+        (Registration.faculty_id == id) | (Registration.email == faculty.email)
+    ).all()
+    for r in regs:
+        if r.event:
+            events_map[r.event.id] = {
+                "id": r.event.id,
+                "title": r.event.title,
+                "event_code": r.event.event_code,
+                "status": r.event.status,
+                "delivery_mode": r.event.delivery_mode,
+                "relationship": "REGISTERED"
+            }
+
+    # 2. Attended programmes
+    atts = db.query(Attendance).filter(Attendance.faculty_id == id).all()
+    for a in atts:
+        if a.event and a.event.id not in events_map:
+            events_map[a.event.id] = {
+                "id": a.event.id,
+                "title": a.event.title,
+                "event_code": a.event.event_code,
+                "status": a.event.status,
+                "delivery_mode": a.event.delivery_mode,
+                "relationship": "ATTENDED"
+            }
+
+    # 3. All completed programmes as fallback
+    completed = db.query(Event).filter(Event.status == "COMPLETED").all()
+    for c in completed:
+        if c.id not in events_map:
+            events_map[c.id] = {
+                "id": c.id,
+                "title": c.title,
+                "event_code": c.event_code,
+                "status": c.status,
+                "delivery_mode": c.delivery_mode,
+                "relationship": "AVAILABLE"
+            }
+
+    return list(events_map.values())

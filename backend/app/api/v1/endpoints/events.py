@@ -32,12 +32,17 @@ def create_event(event_in: EventCreate, db: Session = Depends(get_db)):
         if not coord:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Coordinator faculty does not exist.")
 
-    # Unique event code check or generate
-    existing = db.query(Event).filter(Event.event_code == event_in.event_code).first()
-    if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Event code already exists.")
-
+    # Unique event code check or auto-generate
     event_data = event_in.dict(exclude={"sessions"})
+    if not event_data.get("event_code"):
+        count = db.query(Event).count() + 1
+        year = datetime.utcnow().year
+        event_data["event_code"] = f"VU-FDP-{year}-{count:04d}"
+    else:
+        existing = db.query(Event).filter(Event.event_code == event_data["event_code"]).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Event code already exists.")
+
     event = Event(**event_data)
     event.status = "DRAFT" # Always initially DRAFT
     db.add(event)

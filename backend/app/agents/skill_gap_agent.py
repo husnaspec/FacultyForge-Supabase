@@ -105,25 +105,6 @@ class SkillGapAgent:
                 "reason": "Institutional quality mandate requires advanced attainment mapping and rubric formulation for all teaching faculty."
             })
 
-        # Ensure at least 2 clear gaps exist for demonstration
-        if not skill_gaps:
-            skill_gaps.append({
-                "skill": "Generative AI",
-                "current_level": "BEGINNER",
-                "required_level": "INTERMEDIATE",
-                "gap_score": 82.0,
-                "priority": "HIGH",
-                "reason": "Faculty teaches AI-related subjects but has no recent Generative AI training."
-            })
-            skill_gaps.append({
-                "skill": "Research Methodology",
-                "current_level": "BEGINNER",
-                "required_level": "INTERMEDIATE",
-                "gap_score": 62.0,
-                "priority": "MEDIUM",
-                "reason": "Research interest exists but recent research-methodology training is absent."
-            })
-
         # Save to database (upsert active gaps)
         # Clear existing active gaps to prevent unbounded accumulation
         db.query(SkillGap).filter(SkillGap.faculty_id == faculty_id).delete()
@@ -154,7 +135,7 @@ class SkillGapAgent:
         db.add(analysis_record)
         db.commit()
 
-        overall_readiness = max(40.0, 100.0 - (sum(g["gap_score"] for g in skill_gaps) / len(skill_gaps)))
+        overall_readiness = max(40.0, 100.0 - (sum(g["gap_score"] for g in skill_gaps) / len(skill_gaps))) if skill_gaps else 100.0
 
         return {
             "faculty_id": faculty.id,

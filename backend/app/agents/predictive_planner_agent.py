@@ -39,70 +39,51 @@ class PredictivePlannerAgent:
             gap_query = gap_query.filter(SkillGap.faculty_id.in_(faculty_ids))
         gap_stats = gap_query.group_by(SkillGap.skill_name).all()
 
-        # Build demand ranking based on database realities
-        demands = [
-            {
-                "rank": 1,
-                "topic": "Generative AI and Large Language Models in Engineering Education",
-                "demand_score": 92.0,
-                "target_departments": ["CSE", "IT", "ECE"],
-                "suggested_capacity": 60,
-                "suggested_duration": "2 to 3 Days",
-                "priority": "HIGH",
-                "reason": "Highest cumulative skill gap across 3 technical departments; urgent curricular need for AICTE AI-integration mandates.",
-                "recommended_programme_title": "FDP on Generative AI & Prompt Engineering for Engineering Faculty"
-            },
-            {
-                "rank": 2,
-                "topic": "Cybersecurity Fundamentals and Zero-Trust Network Defense",
-                "demand_score": 86.0,
-                "target_departments": ["CSE", "IT"],
-                "suggested_capacity": 50,
-                "suggested_duration": "3 Days",
-                "priority": "HIGH",
-                "reason": "Elevated student elective enrolment requiring faculty laboratory upskilling in threat modeling and ethical hacking.",
-                "recommended_programme_title": "Workshops on Modern Cybersecurity & Defensive Infrastructure"
-            },
-            {
-                "rank": 3,
-                "topic": "Research Methodology, Scopus/SCI Publishing & Grant Writing",
-                "demand_score": 81.0,
-                "target_departments": ["ALL", "CSE", "IT", "ECE", "MECH"],
-                "suggested_capacity": 75,
-                "suggested_duration": "3 Days",
-                "priority": "HIGH",
-                "reason": "Institutional mandate to boost external grant acquisition (DST/SERB) and h-index citations among junior/mid-career faculty.",
-                "recommended_programme_title": "Faculty Training on High-Impact Research Methodology and Grant Procurement"
-            },
-            {
-                "rank": 4,
-                "topic": "Outcome Based Education (OBE), Bloom's Taxonomy & NBA Attainment",
-                "demand_score": 72.0,
-                "target_departments": ["ALL"],
-                "suggested_capacity": 100,
-                "suggested_duration": "2 Days",
-                "priority": "MEDIUM",
-                "reason": "Upcoming accreditation review cycle necessitates refreshed CO-PO indirect/direct course attainment files.",
-                "recommended_programme_title": "National Workshop on Outcome Based Education & Accreditation Readiness"
-            },
-            {
-                "rank": 5,
-                "topic": "Data Analytics & Machine Learning for Interdisciplinary Research",
-                "demand_score": 68.0,
-                "target_departments": ["ECE", "MECH", "IT"],
-                "suggested_capacity": 45,
-                "suggested_duration": "3 Days",
-                "priority": "MEDIUM",
-                "reason": "Cross-disciplinary demand for statistical modeling and Python-based simulation tools.",
-                "recommended_programme_title": "STTP on Applied Data Science and Analytics for Engineers"
-            }
-        ]
+        # Build demand ranking dynamically based on actual database skill gaps
+        demands = []
+        for idx, r in enumerate(sorted(gap_stats, key=lambda x: x[1], reverse=True)[:5]):
+            skill_name = r[0]
+            count = r[1]
+            # Find matching faculty departments
+            fac_with_gap = db.query(Faculty).join(SkillGap).filter(
+                SkillGap.skill_name == skill_name,
+                SkillGap.status == "ACTIVE"
+            )
+            if faculty_ids:
+                fac_with_gap = fac_with_gap.filter(Faculty.id.in_(faculty_ids))
+            depts = list(set(f.department.code for f in fac_with_gap.all() if f.department))
+            if not depts:
+                depts = ["ALL"]
 
-        insights = [
-            "AI and Information Security constitute 59% of university-wide faculty development interest.",
-            "74% of assistant professors in CSE and IT have expressed high motivation for hands-on prompt engineering training.",
-            "Recommended scheduling: Stagger 2-day hybrid modules during pre-semester instructional preparation weeks."
-        ]
+            demand_score = min(98.0, round(count * 18.0 + 40.0, 1))
+            priority = "HIGH" if count >= 2 else "MEDIUM"
+            duration = "3 Days" if count >= 3 else "2 Days"
+            capacity = min(100, max(30, count * 15))
+
+            demands.append({
+                "rank": idx + 1,
+                "topic": skill_name,
+                "demand_score": demand_score,
+                "target_departments": depts,
+                "suggested_capacity": capacity,
+                "suggested_duration": duration,
+                "priority": priority,
+                "reason": f"Directly addresses {count} active competency gaps identified across {', '.join(depts)} faculty.",
+                "recommended_programme_title": f"FDP on {skill_name} for Engineering Educators"
+            })
+
+        if demands:
+            top_topic = demands[0]["topic"]
+            insights = [
+                f"'{top_topic}' represents the highest-priority institutional demand across evaluated departments.",
+                f"Identified {len(demands)} predictive training priorities dynamically aligned with faculty competency deficits.",
+                "Recommended scheduling: Stagger modules during pre-semester instructional development periods."
+            ]
+        else:
+            insights = [
+                "No active competency deficits identified for the selected department scope.",
+                "Run Skill Gap Agent analysis on faculty profiles to generate predictive training recommendations."
+            ]
 
         # Log analysis
         analysis_record = AgentAnalysis(

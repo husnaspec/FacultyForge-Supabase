@@ -112,24 +112,6 @@ class RecommendationAgent:
                     "recommended_event_id": matching_ev.id if matching_ev else None
                 })
 
-        # Default fallback recommendation if empty
-        if not recommendations:
-            recommendations.append({
-                "title": "Generative AI for Engineering Education",
-                "topic": "Generative AI",
-                "priority": "HIGH",
-                "recommended_duration": "3 Days",
-                "confidence_score": 0.91,
-                "reasons": [
-                    "Addresses a high-priority skill gap",
-                    "Matches teaching interests",
-                    "No similar recent FDP completed"
-                ],
-                "suggested_delivery_mode": "HYBRID",
-                "aligned_gap": "Generative AI",
-                "recommended_event_id": None
-            })
-
         # Save to TrainingRecommendation table
         db.query(TrainingRecommendation).filter(TrainingRecommendation.faculty_id == faculty_id).delete()
         for r in recommendations:

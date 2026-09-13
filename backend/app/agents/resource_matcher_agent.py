@@ -39,7 +39,7 @@ class ResourceMatcherAgent:
                     bonus += 0.25
             
             raw_expertise_match = min(1.0, sim + bonus)
-            expertise_score = round(max(50.0, raw_expertise_match * 100.0), 1)
+            expertise_score = round(raw_expertise_match * 100.0, 1)
 
             # 2. Rating factor (1-5 scale mapped to 0-100)
             rating_score = round((rp.average_rating / 5.0) * 100.0, 1)
@@ -49,16 +49,17 @@ class ResourceMatcherAgent:
 
             # Composite match score: 50% Expertise, 30% Rating, 20% Experience
             composite_score = round((expertise_score * 0.50) + (rating_score * 0.30) + (exp_score * 0.20), 1)
-            # Clip between 60 and 99
-            composite_score = min(98.0, max(62.0, composite_score))
+            composite_score = min(100.0, max(0.0, composite_score))
 
             # Explainable reasoning
-            if expertise_score >= 85:
+            if expertise_score >= 80:
                 reason = f"Strong {rp.expertise.split(',')[0]} specialization and outstanding participant ratings ({rp.average_rating}/5.0)."
-            elif composite_score >= 80:
-                reason = f"High alignment with event objectives, extensive training experience ({rp.total_sessions} sessions), and proven institutional pedigree."
+            elif composite_score >= 70:
+                reason = f"High alignment with event objectives, extensive training experience ({rp.total_sessions} sessions), and proven track record."
+            elif composite_score >= 50:
+                reason = f"Good baseline domain expertise with reliable workshop feedback."
             else:
-                reason = f"Good baseline domain expertise with reliable past workshop feedback."
+                reason = f"Limited domain overlap with event curriculum."
 
             expertise_list = [e.strip() for e in rp.expertise.split(",") if e.strip()]
 

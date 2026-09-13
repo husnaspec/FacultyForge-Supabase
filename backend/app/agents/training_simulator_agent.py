@@ -32,23 +32,15 @@ class TrainingSimulatorAgent:
 
         dept_names = [d.code for d in departments]
 
-        # Calculate eligible faculty in target departments
+        # Calculate eligible faculty in target departments from actual database
         eligible_faculty = db.query(Faculty).filter(
             Faculty.department_id.in_(department_ids),
             Faculty.is_active == True
         ).all()
         eligible_count = len(eligible_faculty)
+        potential_participants = min(capacity, eligible_count)
 
-        # In case test/demo data has small number, scale proportionally for realistic institution planning
-        if eligible_count < capacity:
-            # e.g., in full university setup there are ~74 faculty across departments
-            scaled_eligible = max(eligible_count, int(capacity * 1.25))
-        else:
-            scaled_eligible = eligible_count
-
-        potential_participants = min(capacity, scaled_eligible)
-
-        # Count matching skill gaps
+        # Count actual matching skill gaps in DB
         topic_lower = topic.lower()
         active_gaps = db.query(SkillGap).filter(
             SkillGap.status == "ACTIVE"
@@ -58,36 +50,35 @@ class TrainingSimulatorAgent:
             g for g in active_gaps
             if topic_lower in g.skill_name.lower() or g.skill_name.lower() in topic_lower or any(w in g.skill_name.lower() for w in topic_lower.split() if len(w) > 3)
         ]
+        faculty_with_matching_gaps = len(set(g.faculty_id for g in matching_gaps))
 
-        relevant_gaps_count = max(len(matching_gaps) * 4, int(potential_participants * 0.8))
-        projected_addressed_count = int(potential_participants * 0.65)
-        projected_gap_pct = round((projected_addressed_count / max(1, relevant_gaps_count)) * 100.0, 1)
-        projected_gap_pct = min(95.0, max(45.0, projected_gap_pct))
+        if matching_gaps:
+            projected_gap_pct = min(100.0, round((min(potential_participants, faculty_with_matching_gaps) / len(matching_gaps)) * 100.0, 1))
+        else:
+            projected_gap_pct = 0.0
 
-        # Cost per participant
-        cost_per_part = round(estimated_budget / max(1, potential_participants), 1)
+        # Projected Cost per participant
+        cost_per_part = round(estimated_budget / max(1, potential_participants), 1) if potential_participants > 0 else 0.0
 
-        # Expected Learning Impact
+        # Projected Learning Impact
         expected_impact = "HIGH" if duration_hours >= 16.0 else "MODERATE"
 
         # Projected Compliance Improvement
-        # Compliance hours added = duration_hours * potential_participants
-        total_hours_added = duration_hours * potential_participants
-        compliance_pct_boost = round(min(28.0, (duration_hours / 40.0) * 35.0), 1)
+        compliance_pct_boost = round(min(100.0, (duration_hours / 40.0) * 100.0), 1)
 
         # Priority score (0 to 100)
-        priority_score = min(96.0, round(
+        priority_score = min(98.0, round(
             (projected_gap_pct * 0.4) +
             (min(100.0, (duration_hours / 24.0) * 100.0) * 0.3) +
-            (min(100.0, (potential_participants / 50.0) * 100.0) * 0.3),
+            (min(100.0, (potential_participants / max(1, capacity)) * 100.0) * 0.3),
             1
         ))
 
         explanation = (
-            f"Conducting '{topic}' for {', '.join(dept_names)} with capacity {capacity} is projected to directly address "
-            f"{projected_gap_pct}% of identified departmental skill gaps. "
-            f"Estimated budget utilization is ₹{cost_per_part:.0f}/participant, with an expected {expected_impact} learning impact "
-            f"and an estimated +{compliance_pct_boost}% boost in annual CPD compliance."
+            f"[PROJECTED / ESTIMATED] Conducting '{topic}' for {', '.join(dept_names)} with planned capacity {capacity} is estimated to address "
+            f"{projected_gap_pct}% of identified matching skill deficits ({len(matching_gaps)} gaps recorded). "
+            f"Projected expenditure is ₹{cost_per_part:.0f} per participant, with an anticipated {expected_impact} pedagogical impact "
+            f"and an estimated +{compliance_pct_boost}% progression towards the 40-hour institutional CPD target."
         )
 
         programme_title = f"{topic} for Engineering Faculty"
@@ -119,10 +110,14 @@ class TrainingSimulatorAgent:
         except Exception:
             db.rollback()
 
+        relevant_gaps_count = len(matching_gaps)
+        projected_addressed_count = min(potential_participants, faculty_with_matching_gaps)
+        total_hours_added = round(potential_participants * duration_hours, 1)
+
         return {
             "programme_title": programme_title,
             "topic": topic,
-            "eligible_faculty": scaled_eligible,
+            "eligible_faculty": eligible_count,
             "potential_participants": potential_participants,
             "relevant_skill_gaps": relevant_gaps_count,
             "projected_skill_gaps_addressed": projected_gap_pct,

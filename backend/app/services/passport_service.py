@@ -71,8 +71,7 @@ class PassportService:
                 att_post = db.query(AssessmentAttempt).filter(AssessmentAttempt.assessment_id == post_a.id, AssessmentAttempt.faculty_id == faculty_id).first()
                 if att_pre and att_post:
                     learning_gains.append(att_post.percentage - att_pre.percentage)
-        
-        avg_gain_pp = round(sum(learning_gains) / len(learning_gains), 1) if learning_gains else 27.0
+        avg_gain_pp = round(sum(learning_gains) / len(learning_gains), 1) if learning_gains else 0.0
 
         # Skill gaps
         gaps = db.query(SkillGap).filter(

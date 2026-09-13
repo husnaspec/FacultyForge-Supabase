@@ -90,7 +90,7 @@ export default function CertificateVerificationPage() {
 
           {loading && (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-              Verifying cryptographic digital credentials...
+              Verifying token-verifiable digital credentials...
             </div>
           )}
 

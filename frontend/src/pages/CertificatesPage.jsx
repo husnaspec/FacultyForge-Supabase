@@ -66,7 +66,7 @@ export default function CertificatesPage() {
           <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Institutional Certificate Management</h1>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Cryptographically signed digital credentials verifiable publicly with QR and token verification.
+          Token-verifiable digital credentials verifiable publicly with unique tokens and QR verification.
         </p>
       </div>
 

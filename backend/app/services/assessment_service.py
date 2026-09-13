@@ -12,6 +12,20 @@ class AssessmentService:
         if not assessment:
             raise ValueError("Assessment not found")
 
+        # Enforce PRE before POST rule
+        if assessment.assessment_type == "POST":
+            pre_assessment = db.query(Assessment).filter(
+                Assessment.event_id == assessment.event_id,
+                Assessment.assessment_type == "PRE"
+            ).first()
+            if pre_assessment:
+                pre_attempt = db.query(AssessmentAttempt).filter(
+                    AssessmentAttempt.assessment_id == pre_assessment.id,
+                    AssessmentAttempt.faculty_id == faculty_id
+                ).first()
+                if not pre_attempt:
+                    raise ValueError("PRE assessment required before attempting POST assessment.")
+
         # Check existing attempt
         existing = db.query(AssessmentAttempt).filter(
             AssessmentAttempt.assessment_id == assessment_id,
@@ -49,6 +63,21 @@ class AssessmentService:
         if not event:
             raise ValueError(f"Event with id {event_id} not found")
 
+        # Registrations and attendance rates from real DB data
+        registrations = db.query(Registration).filter(Registration.event_id == event_id).all()
+        reg_count = len(registrations)
+
+        attendances = db.query(Attendance).filter(
+            Attendance.event_id == event_id,
+            Attendance.attendance_status == "PRESENT"
+        ).all()
+        
+        attendee_faculty = set(a.faculty_id for a in attendances if a.faculty_id is not None)
+        attendance_rate = round((len(attendee_faculty) / reg_count * 100.0), 1) if reg_count > 0 else 0.0
+        
+        completed_reg = [r for r in registrations if r.completion_status == "COMPLETED"]
+        completion_rate = round((len(completed_reg) / reg_count * 100.0), 1) if reg_count > 0 else 0.0
+
         pre_assessment = db.query(Assessment).filter(
             Assessment.event_id == event_id,
             Assessment.assessment_type == "PRE"
@@ -71,43 +100,38 @@ class AssessmentService:
                 AssessmentAttempt.assessment_id == post_assessment.id
             ).all()
 
+        # If no attempts exist at all, return genuine empty state
+        if not pre_attempts and not post_attempts:
+            return {
+                "event_id": event.id,
+                "event_title": event.title,
+                "pre_average": 0.0,
+                "post_average": 0.0,
+                "learning_gain_pp": 0.0,
+                "attendance_rate": attendance_rate,
+                "completion_rate": completion_rate,
+                "improvement_distribution": {"high": 0, "moderate": 0, "slight": 0},
+                "impact_level": "PENDING",
+                "participant_count": 0,
+                "has_data": False,
+                "explanation": "No assessment data available. Pre and post assessment scores will populate once participants complete the tests."
+            }
+
         # Faculty matched attempts
         pre_scores = {a.faculty_id: a.percentage for a in pre_attempts}
         post_scores = {a.faculty_id: a.percentage for a in post_attempts}
-
         common_faculty = set(pre_scores.keys()).intersection(set(post_scores.keys()))
 
         if common_faculty:
             pre_avg = round(sum(pre_scores[f] for f in common_faculty) / len(common_faculty), 2)
             post_avg = round(sum(post_scores[f] for f in common_faculty) / len(common_faculty), 2)
-        elif pre_attempts or post_attempts:
-            pre_avg = round(sum(a.percentage for a in pre_attempts) / len(pre_attempts), 2) if pre_attempts else 54.0
-            post_avg = round(sum(a.percentage for a in post_attempts) / len(post_attempts), 2) if post_attempts else 86.0
+            learning_gain_pp = round(post_avg - pre_avg, 2)
         else:
-            # Baseline placeholder for freshly created FDPs
-            pre_avg = 54.0
-            post_avg = 86.0
+            pre_avg = round(sum(a.percentage for a in pre_attempts) / len(pre_attempts), 2) if pre_attempts else 0.0
+            post_avg = round(sum(a.percentage for a in post_attempts) / len(post_attempts), 2) if post_attempts else 0.0
+            learning_gain_pp = round(post_avg - pre_avg, 2) if (pre_attempts and post_attempts) else 0.0
 
-        # Percentage points difference: post_avg - pre_avg
-        learning_gain_pp = round(post_avg - pre_avg, 2)
-
-        # Registrations and attendance rates
-        registrations = db.query(Registration).filter(Registration.event_id == event_id).all()
-        reg_count = len(registrations)
-
-        attendances = db.query(Attendance).filter(
-            Attendance.event_id == event_id,
-            Attendance.attendance_status == "PRESENT"
-        ).all()
-        
-        # Calculate distinct attendees vs registrations
-        attendee_faculty = set(a.faculty_id for a in attendances)
-        attendance_rate = round((len(attendee_faculty) / reg_count * 100.0), 1) if reg_count > 0 else 94.0
-        
-        completed_reg = [r for r in registrations if r.completion_status == "COMPLETED"]
-        completion_rate = round((len(completed_reg) / reg_count * 100.0), 1) if reg_count > 0 else 91.0
-
-        # Improvement distribution
+        # Improvement distribution from real common faculty attempts
         high_gain = 0
         moderate_gain = 0
         slight_gain = 0
@@ -119,18 +143,18 @@ class AssessmentService:
                 moderate_gain += 1
             else:
                 slight_gain += 1
-        
-        if not common_faculty:
-            high_gain = max(1, int(reg_count * 0.7))
-            moderate_gain = max(0, int(reg_count * 0.2))
-            slight_gain = max(0, reg_count - high_gain - moderate_gain)
 
-        impact_level = "HIGH" if learning_gain_pp >= 25.0 else ("MODERATE" if learning_gain_pp >= 10.0 else "LOW")
+        impact_level = "HIGH" if learning_gain_pp >= 25.0 else ("MODERATE" if learning_gain_pp >= 10.0 else ("LOW" if (pre_attempts and post_attempts) else "PENDING"))
 
-        explanation = (
-            f"Pre-assessment average was {pre_avg}%, while post-assessment average attained {post_avg}%, "
-            f"representing an absolute Learning Gain of +{learning_gain_pp} percentage points across cohort."
-        )
+        if pre_attempts and post_attempts:
+            explanation = (
+                f"Pre-assessment average was {pre_avg}%, while post-assessment average attained {post_avg}%, "
+                f"representing an absolute Learning Gain of {'+' if learning_gain_pp >= 0 else ''}{learning_gain_pp} percentage points across cohort."
+            )
+        elif pre_attempts:
+            explanation = f"Diagnostic pre-assessment completed with average score of {pre_avg}%. Post-assessment pending."
+        else:
+            explanation = f"Post-assessment completed with average score of {post_avg}%. Diagnostic pre-assessment was not recorded."
 
         return {
             "event_id": event.id,
@@ -146,7 +170,8 @@ class AssessmentService:
                 "slight_improvement (<10 pp)": slight_gain
             },
             "impact_level": impact_level,
-            "participant_count": reg_count or len(common_faculty) or 10,
+            "participant_count": len(common_faculty) if common_faculty else max(len(pre_attempts), len(post_attempts)),
+            "has_data": True,
             "explanation": explanation
         }
 

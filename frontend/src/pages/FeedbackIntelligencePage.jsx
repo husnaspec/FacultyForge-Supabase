@@ -33,8 +33,8 @@ export default function FeedbackIntelligencePage() {
     relevance_rating: 5,
     practical_rating: 4,
     organization_rating: 5,
-    comments: 'Trainer highly rated and concepts explained clearly. Content highly relevant.',
-    suggestions: 'Practical activities could be expanded in duration.',
+    comments: '',
+    suggestions: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
@@ -91,6 +91,15 @@ export default function FeedbackIntelligencePage() {
       });
       setActionMsg('Feedback registered successfully. Feedback Intelligence Agent re-calculated metrics.');
       setShowSubmitModal(false);
+      setForm({
+        content_rating: 5,
+        trainer_rating: 5,
+        relevance_rating: 5,
+        practical_rating: 5,
+        organization_rating: 5,
+        comments: '',
+        suggestions: '',
+      });
       loadIntelligence(selectedEventId);
     } catch (err) {
       setActionError(err.message || 'Failed to submit feedback');
@@ -114,7 +123,7 @@ export default function FeedbackIntelligencePage() {
       {/* Event Selector & Action Button */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>Programme:</label>
+          <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>Select Programme:</label>
           <select
             className="form-select"
             style={{ minWidth: '320px' }}
@@ -131,7 +140,7 @@ export default function FeedbackIntelligencePage() {
 
         <button onClick={() => setShowSubmitModal(true)} className="btn btn-primary btn-sm">
           <Send size={14} />
-          <span>Submit Feedback (Demo Faculty)</span>
+          <span>Submit Participant Feedback</span>
         </button>
       </div>
 
@@ -149,7 +158,7 @@ export default function FeedbackIntelligencePage() {
         </div>
       )}
 
-      {feedbackIntel && (
+      {feedbackIntel && feedbackIntel.total_responses > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Overall Rating Callout */}
           <div
@@ -190,19 +199,19 @@ export default function FeedbackIntelligencePage() {
             <div style={{ display: 'flex', gap: '1.25rem' }}>
               <div>
                 <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#34d399' }}>
-                  {feedbackIntel.sentiment_distribution?.Positive || 85}%
+                  {feedbackIntel.sentiment_distribution?.Positive || 0}%
                 </span>
                 <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>POSITIVE</p>
               </div>
               <div>
                 <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#93c5fd' }}>
-                  {feedbackIntel.sentiment_distribution?.Neutral || 10}%
+                  {feedbackIntel.sentiment_distribution?.Neutral || 0}%
                 </span>
                 <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>NEUTRAL</p>
               </div>
               <div>
                 <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f87171' }}>
-                  {feedbackIntel.sentiment_distribution?.Critical || 5}%
+                  {feedbackIntel.sentiment_distribution?.Critical || 0}%
                 </span>
                 <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>CRITICAL</p>
               </div>
@@ -264,6 +273,18 @@ export default function FeedbackIntelligencePage() {
               ))}
             </div>
           </div>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: '3rem 2rem', textAlign: 'center', border: '1px dashed var(--border-subtle)' }}>
+          <MessageSquareCode size={44} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem auto' }} />
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>No Feedback Submitted Yet</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', maxWidth: '500px', margin: '0 auto 1.5rem auto' }}>
+            No participant reviews have been recorded for this programme yet. Ratings, thematic analysis, and pedagogical suggestions will populate here dynamically once feedback is submitted.
+          </p>
+          <button onClick={() => setShowSubmitModal(true)} className="btn btn-primary btn-sm">
+            <Send size={14} />
+            <span>Submit Participant Feedback</span>
+          </button>
         </div>
       )}
 

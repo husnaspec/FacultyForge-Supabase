@@ -75,26 +75,6 @@ class KnowledgeSharingAgent:
                     "impact_score": impact_score
                 })
 
-        # If no completed events with regs in DB, provide default high-confidence recommendation
-        if not recommendations:
-            ayesha = db.query(Faculty).filter(Faculty.id == 1).first()
-            name = ayesha.full_name if ayesha else "Dr. Ayesha Khan"
-            desig = ayesha.designation if ayesha else "Assistant Professor"
-            dept = ayesha.department.name if (ayesha and ayesha.department) else "Computer Science & Engineering"
-            recommendations.append({
-                "recommended_faculty_id": 1,
-                "recommended_faculty_name": name,
-                "designation": desig,
-                "department": dept,
-                "topic": "Generative AI for Engineering Education",
-                "source_event_title": "Generative AI for Engineering Education",
-                "learning_gain_achieved": 34.0,
-                "target_department": "CSE & IT Faculty",
-                "suggested_duration": "60-Minute Interactive Brown-Bag Session",
-                "reason": "Completed Generative AI FDP with verified practical implementation and +34% learning gain.",
-                "impact_score": 94.0
-            })
-
         # Deduplicate by (faculty_id, topic)
         unique_recs = []
         seen = set()

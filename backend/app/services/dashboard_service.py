@@ -27,51 +27,55 @@ class DashboardService:
         if total_training_hours == 0 and completed_events:
             total_training_hours = sum(e.duration_hours for e in completed_events)
 
-        # Average attendance
+        # Average attendance from real recorded attendances
         total_att = db.query(Attendance).count()
         present_att = db.query(Attendance).filter(Attendance.attendance_status == "PRESENT").count()
-        avg_attendance = round((present_att / total_att * 100.0), 1) if total_att > 0 else 94.2
+        avg_attendance = round((present_att / total_att * 100.0), 1) if total_att > 0 else 0.0
 
-        # Average feedback
+        # Average feedback from real feedback submissions
         feedbacks = db.query(Feedback).all()
         if feedbacks:
             avg_fb = round(sum((f.content_rating + f.trainer_rating + f.relevance_rating + f.practical_rating + f.organization_rating) / 5.0 for f in feedbacks) / len(feedbacks), 2)
         else:
-            avg_fb = 4.65
+            avg_fb = 0.0
 
-        # Average learning gain across events
+        # Average learning gain across events with real assessment data
         learning_gains = []
-        for e in completed_events[:5]:
+        for e in completed_events:
             try:
                 impact = assessment_service.calculate_learning_impact(db, e.id)
-                learning_gains.append(impact["learning_gain_pp"])
+                if impact.get("has_data") and impact.get("learning_gain_pp") is not None:
+                    learning_gains.append(impact["learning_gain_pp"])
             except Exception:
                 pass
-        avg_learning_gain = round(sum(learning_gains) / len(learning_gains), 1) if learning_gains else 28.4
+        avg_learning_gain = round(sum(learning_gains) / len(learning_gains), 1) if learning_gains else 0.0
 
         # Faculty with skill gaps
         distinct_gap_faculty = db.query(SkillGap.faculty_id).filter(SkillGap.status == "ACTIVE").distinct().count()
 
-        # Compliance rate
-        total_comp = db.query(FacultyCompliance).count()
-        compliant_comp = db.query(FacultyCompliance).filter(FacultyCompliance.status == "COMPLIANT").count()
-        compliance_rate = round((compliant_comp / total_comp * 100.0), 1) if total_comp > 0 else 78.5
+        # Real Compliance rate from faculty compliance records
+        active_faculty = db.query(Faculty).filter(Faculty.is_active == True).all()
+        compliant_count = 0
+        from app.services.compliance_service import compliance_service
+        for f in active_faculty:
+            try:
+                comp = compliance_service.calculate_faculty_compliance(db, f.id)
+                if comp.get("status") == "COMPLIANT":
+                    compliant_count += 1
+            except Exception:
+                pass
+        compliance_rate = round((compliant_count / len(active_faculty) * 100.0), 1) if active_faculty else 0.0
 
         # Recent and upcoming events
         recent = sorted(all_events, key=lambda x: x.created_at or datetime.utcnow(), reverse=True)[:5]
         upcoming = [e for e in all_events if e.status in ["REGISTRATION_OPEN", "APPROVED", "ONGOING"]][:5]
 
-        # Top skill gaps
+        # Real Top skill gaps from database
         gap_records = db.query(SkillGap.skill_name, func.count(SkillGap.id).label("cnt")).filter(
             SkillGap.status == "ACTIVE"
         ).group_by(SkillGap.skill_name).order_by(func.count(SkillGap.id).desc()).limit(5).all()
         
-        top_gaps = [{"skill": r[0], "count": r[1]} for r in gap_records] if gap_records else [
-            {"skill": "Generative AI", "count": 8},
-            {"skill": "Cybersecurity", "count": 6},
-            {"skill": "Research Methodology", "count": 5},
-            {"skill": "Outcome Based Education", "count": 4}
-        ]
+        top_gaps = [{"skill": r[0], "count": r[1]} for r in gap_records]
 
         return {
             "total_faculty": faculty_count,
@@ -115,93 +119,155 @@ class DashboardService:
     def get_strategy_analytics(db: Session) -> Dict[str, Any]:
         summary = DashboardService.get_summary_metrics(db)
 
-        # Monthly programme breakdown
+        # Real monthly programme breakdown from Event dates
         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        all_events = db.query(Event).all()
+        current_year = datetime.utcnow().year
+        monthly_counts = {m: {"fdps": 0, "workshops": 0} for m in months}
+        for ev in all_events:
+            dt = ev.start_date or ev.created_at
+            if dt:
+                m_name = dt.strftime("%b")
+                if m_name in monthly_counts:
+                    if ev.event_type in ["FDP", "STTP", "TRAINING"]:
+                        monthly_counts[m_name]["fdps"] += 1
+                    else:
+                        monthly_counts[m_name]["workshops"] += 1
         programmes_by_month = [
-            {"month": m, "fdps": (idx * 2 + 1) % 5 + 1, "workshops": (idx + 3) % 4 + 1}
-            for idx, m in enumerate(months[:9]) # through current academic cycle
+            {"month": m, "fdps": monthly_counts[m]["fdps"], "workshops": monthly_counts[m]["workshops"]}
+            for m in months[:max(9, datetime.utcnow().month)]
         ]
 
-        # Skill Gaps by Category
+        # Real Skill Gaps by Category
+        active_gaps = db.query(SkillGap).filter(SkillGap.status == "ACTIVE").all()
+        category_map = {
+            "Artificial Intelligence & ML": 0,
+            "Cybersecurity & Networks": 0,
+            "Research & Grant Writing": 0,
+            "Outcome Based Pedagogy (OBE)": 0,
+            "Emerging Engineering Domains": 0
+        }
+        for g in active_gaps:
+            name = g.skill_name.lower()
+            if any(k in name for k in ["ai", "generative", "machine learning", "data", "deep learning"]):
+                category_map["Artificial Intelligence & ML"] += 1
+            elif any(k in name for k in ["cyber", "security", "network", "cloud"]):
+                category_map["Cybersecurity & Networks"] += 1
+            elif any(k in name for k in ["research", "scopus", "grant", "writing"]):
+                category_map["Research & Grant Writing"] += 1
+            elif any(k in name for k in ["obe", "outcome", "nba", "pedagogy", "accreditation"]):
+                category_map["Outcome Based Pedagogy (OBE)"] += 1
+            else:
+                category_map["Emerging Engineering Domains"] += 1
+
+        total_cat_gaps = sum(category_map.values())
         skill_gap_categories = [
-            {"category": "Artificial Intelligence & ML", "count": 14, "percentage": 36},
-            {"category": "Cybersecurity & Networks", "count": 9, "percentage": 23},
-            {"category": "Research & Grant Writing", "count": 8, "percentage": 21},
-            {"category": "Outcome Based Pedagogy (OBE)", "count": 5, "percentage": 13},
-            {"category": "Data Engineering", "count": 3, "percentage": 7}
+            {
+                "category": cat,
+                "count": count,
+                "percentage": round(count / total_cat_gaps * 100) if total_cat_gaps > 0 else 0
+            }
+            for cat, count in category_map.items() if count > 0
         ]
 
-        # Training Demand by Topic
-        training_demand = [
-            {"topic": "Generative AI in Higher Education", "demand_score": 94, "target_depts": ["CSE", "IT", "ECE"]},
-            {"topic": "Defensive Cybersecurity Architectures", "demand_score": 88, "target_depts": ["CSE", "IT"]},
-            {"topic": "High-Impact Research Methodology & Scopus Publishing", "demand_score": 83, "target_depts": ["ALL"]},
-            {"topic": "NBA Accreditation & Outcome Based Course Files", "demand_score": 75, "target_depts": ["ALL"]},
-            {"topic": "Applied Cloud & Edge Computing for Engineers", "demand_score": 70, "target_depts": ["ECE", "MECH"]}
-        ]
+        # Real Training Demand by Topic derived from active SkillGaps
+        gap_stats = db.query(SkillGap.skill_name, func.count(SkillGap.id).label("cnt")).filter(
+            SkillGap.status == "ACTIVE"
+        ).group_by(SkillGap.skill_name).order_by(func.count(SkillGap.id).desc()).limit(5).all()
 
-        # Learning Gain by FDP
-        events = db.query(Event).filter(Event.status.in_(["COMPLETED", "ONGOING"])).limit(6).all()
+        training_demand = []
+        for r in gap_stats:
+            skill_n = r[0]
+            cnt = r[1]
+            # Find which departments have this gap
+            fac_with_gap = db.query(Faculty).join(SkillGap).filter(
+                SkillGap.skill_name == skill_n,
+                SkillGap.status == "ACTIVE"
+            ).all()
+            depts = list(set(f.department.code for f in fac_with_gap if f.department))
+            training_demand.append({
+                "topic": skill_n,
+                "demand_score": min(100.0, round(cnt * 20.0 + 40.0, 1)),
+                "target_depts": depts if depts else ["ALL"]
+            })
+
+        # Real Learning Gain by FDP from actual assessment attempts
+        events = db.query(Event).filter(Event.status.in_(["COMPLETED", "ONGOING", "APPROVED"])).all()
         learning_gain_by_fdp = []
         for ev in events:
-            learning_gain_by_fdp.append({
-                "event_title": ev.title[:30] + ("..." if len(ev.title) > 30 else ""),
-                "pre_average": 52.0,
-                "post_average": 84.0,
-                "learning_gain_pp": 32.0
-            })
-        if not learning_gain_by_fdp:
-            learning_gain_by_fdp = [
-                {"event_title": "Generative AI for Educators", "pre_average": 54.0, "post_average": 86.0, "learning_gain_pp": 32.0},
-                {"event_title": "Cybersecurity Fundamentals", "pre_average": 48.0, "post_average": 79.0, "learning_gain_pp": 31.0},
-                {"event_title": "Outcome Based Education", "pre_average": 61.0, "post_average": 88.0, "learning_gain_pp": 27.0},
-                {"event_title": "Research Methodology", "pre_average": 55.0, "post_average": 80.0, "learning_gain_pp": 25.0}
-            ]
+            try:
+                impact = assessment_service.calculate_learning_impact(db, ev.id)
+                if impact.get("has_data") and impact.get("learning_gain_pp") is not None:
+                    learning_gain_by_fdp.append({
+                        "event_title": ev.title[:30] + ("..." if len(ev.title) > 30 else ""),
+                        "pre_average": impact["pre_average"],
+                        "post_average": impact["post_average"],
+                        "learning_gain_pp": impact["learning_gain_pp"]
+                    })
+            except Exception:
+                pass
 
-        # Department Development Score
+        # Real Department Development Score
         departments = db.query(Department).all()
         dept_scores = []
         for d in departments:
-            fac_in_dept = len(d.faculty_members) if d.faculty_members else 1
+            fac_in_dept = db.query(Faculty).filter(Faculty.department_id == d.id, Faculty.is_active == True).all()
+            fac_ids = [f.id for f in fac_in_dept]
+            dept_certs = db.query(Certificate).filter(Certificate.faculty_id.in_(fac_ids), Certificate.status == "VALID").all() if fac_ids else []
+            hours_completed = sum(c.training_hours for c in dept_certs)
+            
+            # Score based on proportion of faculty certified and training target
+            fac_count = len(fac_in_dept)
+            if fac_count > 0:
+                cert_ratio = min(1.0, len(dept_certs) / fac_count)
+                hours_ratio = min(1.0, hours_completed / (fac_count * 40.0))
+                dev_score = round((cert_ratio * 50.0 + hours_ratio * 50.0), 1)
+            else:
+                dev_score = 0.0
+
             dept_scores.append({
                 "department": d.code,
                 "name": d.name,
-                "faculty_count": fac_in_dept,
-                "development_score": min(98, 72 + (d.id * 6)),
-                "training_hours_completed": min(350, fac_in_dept * 36)
+                "faculty_count": fac_count,
+                "development_score": dev_score,
+                "training_hours_completed": hours_completed
             })
 
-        # Compliance distribution
+        # Real Compliance distribution calculated across all active faculty
+        from app.services.compliance_service import compliance_service
+        active_faculty = db.query(Faculty).filter(Faculty.is_active == True).all()
+        comp_counts = {"COMPLIANT": 0, "ATTENTION_REQUIRED": 0, "NON_COMPLIANT": 0}
+        for f in active_faculty:
+            try:
+                c_res = compliance_service.calculate_faculty_compliance(db, f.id)
+                st = c_res.get("status", "NON_COMPLIANT")
+                if st in comp_counts:
+                    comp_counts[st] += 1
+                else:
+                    comp_counts["NON_COMPLIANT"] += 1
+            except Exception:
+                comp_counts["NON_COMPLIANT"] += 1
+
+        total_f = len(active_faculty)
         compliance_dist = [
-            {"status": "Compliant (>=40 hrs)", "count": 8, "percentage": 67},
-            {"status": "Attention Required (20-39 hrs)", "count": 3, "percentage": 25},
-            {"status": "Non-Compliant (<20 hrs)", "count": 1, "percentage": 8}
+            {"status": "Compliant (>=40 hrs)", "count": comp_counts["COMPLIANT"], "percentage": round(comp_counts["COMPLIANT"] / total_f * 100) if total_f > 0 else 0},
+            {"status": "Attention Required (20-39 hrs)", "count": comp_counts["ATTENTION_REQUIRED"], "percentage": round(comp_counts["ATTENTION_REQUIRED"] / total_f * 100) if total_f > 0 else 0},
+            {"status": "Non-Compliant (<20 hrs)", "count": comp_counts["NON_COMPLIANT"], "percentage": round(comp_counts["NON_COMPLIANT"] / total_f * 100) if total_f > 0 else 0}
         ]
 
-        # Recommended Next FDPs
-        next_recommended = [
-            {
-                "topic": "Generative AI for Engineering Education",
-                "departments": ["CSE", "IT", "ECE"],
-                "duration": "2 Days",
+        # Recommended Next FDPs derived from highest priority active skill gaps
+        next_recommended = []
+        for r in gap_stats[:3]:
+            skill_n = r[0]
+            fac_with_gap = db.query(Faculty).join(SkillGap).filter(SkillGap.skill_name == skill_n, SkillGap.status == "ACTIVE").all()
+            depts = list(set(f.department.code for f in fac_with_gap if f.department))
+            next_recommended.append({
+                "topic": f"{skill_n} Competency Programme",
+                "departments": depts if depts else ["ALL"],
+                "duration": "2 to 3 Days",
                 "priority": "HIGH",
-                "reason": "Directly resolves high-priority skill gaps and aligns with AICTE emerging curriculum directives."
-            },
-            {
-                "topic": "Research Methodology and Academic Writing",
-                "departments": ["ALL"],
-                "duration": "3 Days",
-                "priority": "HIGH",
-                "reason": "Addresses research output deficiency identified across mid-career assistant professors."
-            },
-            {
-                "topic": "Cybersecurity and Zero-Trust Networks",
-                "departments": ["CSE", "IT"],
-                "duration": "3 Days",
-                "priority": "MEDIUM",
-                "reason": "Elevated student enrollment in cyber elective necessitating faculty upskilling."
-            }
-        ]
+                "reason": f"Directly addresses {r[1]} active faculty competency gaps identified in departmental audits."
+            })
 
         return {
             "summary": summary,

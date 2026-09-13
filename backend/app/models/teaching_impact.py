@@ -22,6 +22,20 @@ class TeachingImpact(Base):
     impact_status = Column(String(50), default="APPLIED")
     applied_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    verified_at = Column(DateTime, nullable=True)
+    verified_by = Column(String(150), nullable=True)
 
     faculty = relationship("Faculty", back_populates="teaching_impacts")
     event = relationship("Event", back_populates="teaching_impacts")
+
+    @property
+    def description(self) -> str:
+        return self.application_description
+
+    @property
+    def evidence_reference(self) -> str:
+        return self.evidence_url
+
+    @property
+    def status(self) -> str:
+        return self.impact_status
