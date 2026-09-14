@@ -137,6 +137,16 @@ def init_db_schema():
         reconciled = FacultyRegistrationService.reconcile_unlinked_registrations(db)
         if reconciled > 0:
             print(f"[Startup Reconciliation] Reconciled {reconciled} registrations to faculty records.")
+
+        # If brand new database (e.g. deployed in serverless/cloud without local sqlite file), seed initial schema
+        from app.models.department import Department
+        from app.services.seed_service import SeedService
+        if db.query(Department).count() == 0:
+            print("[Init DB] Fresh cloud database detected. Seeding initial records...")
+            SeedService.seed_all(db)
+            db.commit()
+            print("[Init DB] Initial database seeding completed.")
+
         db.close()
     except Exception as e:
-        print(f"[Startup Reconciliation] Note: {e}")
+        print(f"[Startup Initialization] Note: {e}")

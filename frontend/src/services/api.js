@@ -1,4 +1,18 @@
-const RAW_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+function resolveApiBase() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // When running in the browser over HTTPS (such as on Vercel) and not on localhost:
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '/api/v1';
+  }
+  return 'http://127.0.0.1:8000/api/v1';
+}
+
+const RAW_BASE = resolveApiBase();
 const API_BASE = RAW_BASE.replace(/\/+$/, '');
 
 export function asArray(res, ...fallbackKeys) {
