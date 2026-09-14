@@ -57,11 +57,13 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
+@app.get("/api")
+@app.get("/api/v1")
 def root():
     return {
+        "status": "healthy",
         "platform": settings.PROJECT_NAME,
         "tagline": settings.TAGLINE,
         "api_docs": "/docs",
         "api_v1": settings.API_V1_STR,
-        "status": "online"
     }

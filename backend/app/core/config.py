@@ -12,7 +12,9 @@ env_db_path = os.getenv("SQLITE_DB_PATH")
 if env_db_path and env_db_path.strip():
     RESOLVED_DB_PATH = Path(env_db_path.strip()).resolve()
 elif os.getenv("VERCEL") == "1" or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
-    tmp_db = Path("/tmp/facultyforge.db")
+    import tempfile
+    tmp_dir = Path(tempfile.gettempdir())
+    tmp_db = tmp_dir / "facultyforge.db"
     if not tmp_db.exists() and DEFAULT_DB_PATH.exists():
         import shutil
         try:

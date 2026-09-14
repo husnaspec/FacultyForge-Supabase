@@ -51,6 +51,7 @@ backend/.env
 
 # SQLite databases and runtime files
 *.db
+!backend/facultyforge.db
 *.db-wal
 *.db-shm
 *.sqlite
