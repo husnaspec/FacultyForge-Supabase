@@ -12,15 +12,24 @@ engine = create_engine(
     echo=False
 )
 
-# Safe SQLite configurations: WAL journal mode, foreign keys, busy timeout
+# Safe SQLite configurations: foreign keys, journal mode, busy timeout
 if settings.DATABASE_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         try:
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=5000")
+            try:
+                cursor.execute("PRAGMA foreign_keys=ON")
+            except Exception:
+                pass
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+            except Exception:
+                pass
+            try:
+                cursor.execute("PRAGMA busy_timeout=5000")
+            except Exception:
+                pass
         finally:
             cursor.close()
 

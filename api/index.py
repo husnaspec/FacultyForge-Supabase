@@ -19,14 +19,29 @@ if str(ROOT_DIR) not in sys.path:
 if os.getenv("VERCEL") == "1" or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
     tmp_dir = Path(tempfile.gettempdir())
     tmp_db = tmp_dir / "facultyforge.db"
-    source_db = BACKEND_DIR / "facultyforge.db"
+    
+    # Candidate locations where facultyforge.db might be bundled
+    candidate_sources = [
+        CURRENT_DIR / "facultyforge.db",
+        BACKEND_DIR / "facultyforge.db",
+        ROOT_DIR / "facultyforge.db",
+        Path("/var/task/api/facultyforge.db"),
+        Path("/var/task/backend/facultyforge.db"),
+        Path("/var/task/facultyforge.db"),
+    ]
     
     if not tmp_db.exists():
-        if source_db.exists():
-            try:
-                shutil.copy2(source_db, tmp_db)
-            except Exception as e:
-                print(f"[Vercel Serverless] Notice copying source DB: {e}")
+        copied = False
+        for src in candidate_sources:
+            if src.exists():
+                try:
+                    shutil.copy2(src, tmp_db)
+                    copied = True
+                    break
+                except Exception as e:
+                    print(f"[Vercel Serverless] Notice copying {src}: {e}")
+        if not copied:
+            print("[Vercel Serverless] Initial DB file not found in bundle, schema will be auto-generated.")
     
     os.environ["SQLITE_DB_PATH"] = str(tmp_db)
 

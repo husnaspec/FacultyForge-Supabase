@@ -20,25 +20,54 @@ class AIProvider:
         return self.provider == "llm" and bool(self.api_key.strip())
 
     def generate_completion(self, prompt: str, system_instruction: Optional[str] = None) -> str:
-        """Invokes external LLM if configured, otherwise returns None to trigger deterministic engine."""
+        """Invokes external LLM (Groq or Gemini) if configured, otherwise returns empty string to trigger deterministic engine."""
         if not self.is_llm_enabled():
             return ""
         try:
             import httpx
-            # Example Gemini REST call or generic LLM endpoint
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": f"{system_instruction or ''}\n\n{prompt}"}]}]
-            }
-            with httpx.Client(timeout=20.0) as client:
-                res = client.post(url, json=payload)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        return candidates[0]["content"]["parts"][0]["text"]
-        except Exception:
-            pass
+            # 1. Groq API (High-speed LLM)
+            if self.api_key.startswith("gsk_") or "groq" in str(self.provider).lower():
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                model = self.model if "gemini" not in self.model.lower() else "openai/gpt-oss-120b"
+                messages = []
+                if system_instruction:
+                    messages.append({"role": "system", "content": system_instruction})
+                messages.append({"role": "user", "content": prompt})
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.5,
+                    "max_tokens": 1024
+                }
+                with httpx.Client(timeout=25.0) as client:
+                    res = client.post(url, json=payload, headers=headers)
+                    if res.status_code == 200:
+                        data = res.json()
+                        choices = data.get("choices", [])
+                        if choices:
+                            return choices[0].get("message", {}).get("content", "")
+                    else:
+                        print(f"[Groq LLM Notice] status={res.status_code}, detail={res.text[:150]}")
+
+            # 2. Google Gemini API
+            else:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": f"{system_instruction or ''}\n\n{prompt}"}]}]
+                }
+                with httpx.Client(timeout=20.0) as client:
+                    res = client.post(url, json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            return candidates[0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            print(f"[LLM Inference Notice]: {e}")
         return ""
 
     @staticmethod

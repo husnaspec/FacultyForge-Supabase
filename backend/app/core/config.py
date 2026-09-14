@@ -38,10 +38,11 @@ class Settings:
     SQLITE_DB_PATH: Path = RESOLVED_DB_PATH
     DATABASE_URL: str = f"sqlite:///{RESOLVED_DB_PATH.as_posix()}"
     
-    # AI Provider Configuration
-    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "deterministic") # "deterministic" or "llm"
+    # AI Provider Configuration (Groq / Gemini / LLM)
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "llm")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    AI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("AI_API_KEY", "")
-    AI_MODEL: str = os.getenv("AI_MODEL", "gemini-1.5-flash")
+    AI_API_KEY: str = os.getenv("GROQ_API_KEY") or os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+    AI_MODEL: str = os.getenv("AI_MODEL", "openai/gpt-oss-120b")
 
 settings = Settings()
