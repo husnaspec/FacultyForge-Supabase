@@ -44,6 +44,7 @@ class PeerMentorAgent:
             return {
                 "faculty_id": faculty.id,
                 "faculty_name": faculty.full_name,
+                "skill_gap": None,
                 "target_skill_gap": None,
                 "mentor_matches": [],
                 "message": "Faculty member has no active competency gaps requiring peer mentorship."

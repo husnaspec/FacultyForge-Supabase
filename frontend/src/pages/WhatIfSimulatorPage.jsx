@@ -328,19 +328,19 @@ export default function WhatIfSimulatorPage() {
 
                 <div className="card" style={{ padding: '1rem' }}>
                   <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                    EXPECTED IMPACT LEVEL
+                    PROJECTED / ESTIMATED IMPACT LEVEL
                   </span>
                   <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#9333ea', marginTop: '0.25rem' }}>
                     {simulationResult.expected_learning_impact}
                   </div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    Priority Score: {simulationResult.priority_score}/100
+                    Estimated Priority Score: {simulationResult.priority_score}/100
                   </span>
                 </div>
 
                 <div className="card" style={{ padding: '1rem' }}>
                   <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                    CPD COMPLIANCE BOOST
+                    PROJECTED CPD COMPLIANCE BOOST
                   </span>
                   <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#0284c7', marginTop: '0.25rem' }}>
                     +{simulationResult.expected_compliance_improvement}%

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import Modal from '../components/Modal';
-import { Building2, PlusCircle, Users, Calendar } from 'lucide-react';
+import { Building2, PlusCircle, Users, Calendar, AlertCircle } from 'lucide-react';
 
 export default function DepartmentsList() {
   const [departments, setDepartments] = useState([]);
@@ -20,11 +20,13 @@ export default function DepartmentsList() {
 
   const loadDepartments = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const data = await api.getDepartments();
-      setDepartments(data);
+      setDepartments(asArray(data, 'departments'));
     } catch (err) {
       console.error(err);
+      setErrorMsg(err.message || 'Failed to load departments');
     } finally {
       setLoading(false);
     }
@@ -67,8 +69,24 @@ export default function DepartmentsList() {
         </button>
       </div>
 
-      <div className="grid-2">
-        {departments.map((d) => (
+      {errorMsg && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={16} />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+          Loading departments...
+        </div>
+      ) : departments.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+          {errorMsg ? 'Could not load departments.' : 'No departments registered yet.'}
+        </div>
+      ) : (
+        <div className="grid-2">
+          {departments.map((d) => (
           <div key={d.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div>
@@ -98,7 +116,8 @@ export default function DepartmentsList() {
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
 
       {/* Add Modal */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Add Academic Department">

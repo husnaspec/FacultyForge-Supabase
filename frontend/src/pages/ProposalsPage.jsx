@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
@@ -25,11 +25,13 @@ export default function ProposalsPage() {
 
   const loadProposals = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const list = await api.getProposals();
-      setProposals(list);
+      setProposals(asArray(list, 'proposals'));
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load proposals:', err);
+      setErrorMsg(err.message || 'Failed to load proposals from backend');
     } finally {
       setLoading(false);
     }
@@ -93,6 +95,13 @@ export default function ProposalsPage() {
         </p>
       </div>
 
+      {errorMsg && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={16} />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
       <div className="card" style={{ padding: 0 }}>
         <div className="table-container" style={{ border: 'none' }}>
           <table className="data-table">
@@ -108,24 +117,30 @@ export default function ProposalsPage() {
               </tr>
             </thead>
             <tbody>
-              {proposals.length === 0 ? (
+              {loading ? (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                    No proposals submitted yet.
+                    Loading proposals from backend...
+                  </td>
+                </tr>
+              ) : proposals.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    {errorMsg ? 'Could not load proposals.' : 'No proposals submitted yet.'}
                   </td>
                 </tr>
               ) : (
                 proposals.map((p) => (
                   <tr key={p.id}>
-                    <td style={{ fontWeight: 700 }}>{p.event_title}</td>
-                    <td>{p.submitted_by}</td>
-                    <td>{p.department_name || 'CSE'}</td>
-                    <td>{new Date(p.submitted_at).toLocaleDateString()}</td>
+                    <td style={{ fontWeight: 700 }}>{p.event_title || p.title || 'FDP Proposal'}</td>
+                    <td>{p.submitted_by || 'Coordinator'}</td>
+                    <td>{p.department_name || p.department || 'CSE'}</td>
+                    <td>{p.submitted_at ? new Date(p.submitted_at).toLocaleDateString() : 'N/A'}</td>
                     <td>
-                      <StatusBadge status={p.approval_status} />
+                      <StatusBadge status={p.approval_status || p.status} />
                     </td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)', maxWidth: '250px' }}>
-                      {p.remarks || 'Pending Review'}
+                      {p.remarks || (p.approval_status === 'APPROVED' ? 'Approved' : 'Pending Review')}
                     </td>
                     <td>
                       {p.approval_status === 'PENDING' ? (

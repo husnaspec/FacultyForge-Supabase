@@ -18,8 +18,8 @@ class ComplianceService:
         if not active_rules:
             # Default institutional rule
             rule = ComplianceRule(
-                rule_name="Annual Faculty Development Requirement",
-                description="Institutional mandatory target for annual continuous professional development.",
+                rule_name="Institutional Annual Faculty Development Requirement",
+                description="Institutional benchmark target for annual continuous professional development.",
                 minimum_training_hours=40.0,
                 period_type="ANNUAL",
                 required_topics="Teaching Methodology, Research, Emerging Technologies",

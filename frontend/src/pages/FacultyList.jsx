@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import Modal from '../components/Modal';
-import { Users, Search, PlusCircle, GraduationCap, Building2, Eye, ShieldAlert } from 'lucide-react';
+import { Users, Search, PlusCircle, GraduationCap, Building2, Eye, ShieldAlert, AlertCircle } from 'lucide-react';
 
 export default function FacultyList() {
   const [faculty, setFaculty] = useState([]);
@@ -12,6 +12,7 @@ export default function FacultyList() {
   const [deptFilter, setDeptFilter] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const initialFormState = {
     faculty_code: '',
@@ -43,7 +44,7 @@ export default function FacultyList() {
   const loadDepartments = async () => {
     try {
       const deptList = await api.getDepartments();
-      const list = Array.isArray(deptList) ? deptList : [];
+      const list = asArray(deptList, 'departments');
       setDepartments(list);
       return list;
     } catch (err) {
@@ -54,14 +55,16 @@ export default function FacultyList() {
 
   const loadFaculty = async () => {
     setLoading(true);
+    setErrorMessage('');
     try {
       const facList = await api.getFacultyList({
         department_id: deptFilter || undefined,
         search: search || undefined,
       });
-      setFaculty(Array.isArray(facList) ? facList : []);
+      setFaculty(asArray(facList, 'faculty', 'faculty_members'));
     } catch (err) {
       console.error('Failed to load faculty:', err);
+      setErrorMessage(err.message || 'Failed to load faculty members');
     } finally {
       setLoading(false);
     }

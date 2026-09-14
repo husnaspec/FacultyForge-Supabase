@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 import {
   FileCheck2,
@@ -18,23 +17,29 @@ import {
 } from 'lucide-react';
 
 export default function SkillEvidencePage() {
-  const { activeFacultyId } = useAuth();
+  const { activeFacultyId, isAdmin, isApprover } = useAuth();
   const [facultyList, setFacultyList] = useState([]);
   const [selectedFacultyId, setSelectedFacultyId] = useState(activeFacultyId || 1);
   const [verifiedSkills, setVerifiedSkills] = useState([]);
   const [evidences, setEvidences] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [showEvidenceModal, setShowEvidenceModal] = useState(false);
+  const [modalError, setModalError] = useState('');
+  const [isCustomSkill, setIsCustomSkill] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
-    skill_name: 'Generative AI',
-    evidence_type: 'PROJECT',
+    faculty_id: selectedFacultyId || 1,
+    skill_name: 'ANSYS',
+    evidence_type: 'PRACTICAL_ACTIVITY',
     evidence_reference: '',
     score: 85,
-    verified_by: 'IQAC Academic Advisory Board',
+    verification_status: 'UNVERIFIED',
+    verified_by: '',
   });
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadFaculty();
@@ -42,62 +47,113 @@ export default function SkillEvidencePage() {
 
   useEffect(() => {
     if (selectedFacultyId) {
-      loadEvidenceData();
+      loadEvidenceData(selectedFacultyId);
     }
   }, [selectedFacultyId]);
 
   const loadFaculty = async () => {
     try {
       const list = await api.getFacultyList();
-      setFacultyList(list || []);
-      if (!selectedFacultyId && list.length > 0) {
-        setSelectedFacultyId(list[0].id);
+      const facs = asArray(list, 'faculty', 'faculty_members');
+      setFacultyList(facs);
+      if (facs.length > 0) {
+        if (!selectedFacultyId || !facs.some((f) => String(f.id) === String(selectedFacultyId))) {
+          setSelectedFacultyId(facs[0].id);
+        }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load faculty:', err);
+      setError(err.message || 'Failed to load faculty list');
     }
   };
 
-  const loadEvidenceData = async () => {
+  const loadEvidenceData = async (fId = selectedFacultyId) => {
+    if (!fId) return;
     setLoading(true);
+    setError('');
     try {
       const [vSkills, evList] = await Promise.all([
-        api.getVerifiedSkills(selectedFacultyId),
-        api.getSkillEvidence(selectedFacultyId),
+        api.getVerifiedSkills(fId),
+        api.getSkillEvidence(fId),
       ]);
-      setVerifiedSkills(vSkills || []);
-      setEvidences(evList || []);
+      setVerifiedSkills(asArray(vSkills, 'verified_skills'));
+      setEvidences(asArray(evList, 'evidence', 'skill_evidence'));
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load evidence data:', err);
+      setError(err.message || 'Failed to load skill evidence data');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleOpenEvidenceModal = () => {
+    setModalError('');
+    const targetFacId = selectedFacultyId || (facultyList[0]?.id || 1);
+    const initialSkill = verifiedSkills.length > 0 ? verifiedSkills[0].skill_name : 'ANSYS';
+    setFormData({
+      faculty_id: targetFacId,
+      skill_name: initialSkill,
+      evidence_type: 'PRACTICAL_ACTIVITY',
+      evidence_reference: '',
+      score: 85,
+      verification_status: (isAdmin || isApprover) ? 'VERIFIED' : 'UNVERIFIED',
+      verified_by: (isAdmin || isApprover) ? 'IQAC Academic Advisory Board' : '',
+    });
+    setIsCustomSkill(false);
+    setShowEvidenceModal(true);
+  };
+
   const handleAddEvidence = async (e) => {
     e.preventDefault();
-    if (!formData.evidence_reference) {
-      alert('Please enter evidence reference details.');
+    setModalError('');
+
+    if (!formData.evidence_reference?.trim()) {
+      setModalError('Please enter evidence reference details.');
       return;
     }
+    if (!formData.skill_name?.trim()) {
+      setModalError('Please enter or select a skill name.');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await api.addSkillEvidence(selectedFacultyId, {
-        ...formData,
-        score: parseFloat(formData.score) || null,
-        verified: true,
-      });
-      setShowAddModal(false);
-      setFormData({
-        skill_name: 'Generative AI',
-        evidence_type: 'PROJECT',
-        evidence_reference: '',
-        score: 85,
-        verified_by: 'IQAC Academic Advisory Board',
-      });
-      loadEvidenceData();
+      const targetFacId = formData.faculty_id || selectedFacultyId;
+      // Role enforcement: Faculty/Participant cannot self-verify, must default to UNVERIFIED
+      const statusVal = (isAdmin || isApprover) ? (formData.verification_status || 'VERIFIED') : 'UNVERIFIED';
+      const isVer = statusVal === 'VERIFIED' || statusVal === 'PARTIALLY_VERIFIED';
+      const verBy = isVer ? (formData.verified_by?.trim() || (isAdmin ? 'Admin / FDP Coordinator' : 'IQAC Academic Committee')) : null;
+
+      const payload = {
+        faculty_id: targetFacId,
+        skill_name: formData.skill_name.trim(),
+        evidence_type: formData.evidence_type,
+        evidence_reference: formData.evidence_reference.trim(),
+        score: formData.score !== '' && formData.score !== null && !isNaN(Number(formData.score)) ? parseFloat(formData.score) : null,
+        verification_status: statusVal,
+        verified: isVer,
+        verified_by: verBy,
+      };
+
+      await api.addSkillEvidence(targetFacId, payload);
+
+      setShowEvidenceModal(false);
+      setSuccessMsg(`Skill evidence for "${payload.skill_name}" submitted successfully!`);
+      setTimeout(() => setSuccessMsg(''), 6000);
+
+      // Refetch evidence without full page reload
+      if (targetFacId === selectedFacultyId) {
+        await loadEvidenceData(targetFacId);
+      } else {
+        setSelectedFacultyId(targetFacId);
+      }
     } catch (err) {
-      alert(err.message || 'Failed to record evidence');
+      console.error('Failed to record evidence:', err);
+      let displayError = err.message || 'Failed to record evidence';
+      if (err.status === 422 && Array.isArray(err.data?.detail)) {
+        displayError = 'Validation Error: ' + err.data.detail.map((d) => `${d.loc?.slice(1).join('.') || ''}: ${d.msg}`).join(', ');
+      }
+      setModalError(displayError);
     } finally {
       setSubmitting(false);
     }
@@ -124,12 +180,30 @@ export default function SkillEvidencePage() {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-sm">
+          <button
+            onClick={handleOpenEvidenceModal}
+            className="btn btn-primary btn-sm"
+            id="submit-skill-evidence-btn"
+          >
             <Plus size={15} />
-            <span>Submit Skill Evidence</span>
+            <span>+ Submit Skill Evidence</span>
           </button>
         </div>
       </div>
+
+      {successMsg && (
+        <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', color: '#047857', padding: '0.75rem 1rem', borderRadius: '6px' }}>
+          <CheckCircle2 size={18} />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Faculty Selector Card */}
       <div className="card" style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '1rem 1.25rem' }}>
@@ -280,34 +354,54 @@ export default function SkillEvidencePage() {
                   </td>
                 </tr>
               ) : (
-                evidences.map((ev) => (
-                  <tr key={ev.id}>
-                    <td style={{ fontWeight: 700 }}>{ev.skill_name}</td>
-                    <td>
-                      <span
-                        style={{
-                          fontSize: '0.6875rem',
-                          fontWeight: 700,
-                          background: 'rgba(59, 130, 246, 0.1)',
-                          color: '#2563eb',
-                          padding: '0.2rem 0.45rem',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        {ev.evidence_type}
-                      </span>
-                    </td>
-                    <td style={{ maxWidth: '300px', color: 'var(--text-secondary)' }}>{ev.evidence_reference}</td>
-                    <td>{ev.score ? `${ev.score}%` : 'N/A'}</td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#059669', fontWeight: 600 }}>
-                        <CheckCircle2 size={13} />
-                        VERIFIED
-                      </span>
-                    </td>
-                    <td style={{ color: 'var(--text-muted)' }}>{ev.verified_by || 'IQAC Committee'}</td>
-                  </tr>
-                ))
+                evidences.map((ev) => {
+                  const vStatus = ev.verification_status || (ev.verified ? 'VERIFIED' : 'UNVERIFIED');
+                  const isVerified = vStatus === 'VERIFIED';
+                  const isPartial = vStatus === 'PARTIALLY_VERIFIED';
+
+                  return (
+                    <tr key={ev.id}>
+                      <td style={{ fontWeight: 700 }}>{ev.skill_name}</td>
+                      <td>
+                        <span
+                          style={{
+                            fontSize: '0.6875rem',
+                            fontWeight: 700,
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            color: '#2563eb',
+                            padding: '0.2rem 0.45rem',
+                            borderRadius: '4px',
+                          }}
+                        >
+                          {ev.evidence_type}
+                        </span>
+                      </td>
+                      <td style={{ maxWidth: '300px', color: 'var(--text-secondary)' }}>{ev.evidence_reference}</td>
+                      <td>{ev.score !== null && ev.score !== undefined ? `${ev.score}%` : 'N/A'}</td>
+                      <td>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            color: isVerified ? '#059669' : isPartial ? '#d97706' : '#64748b',
+                            background: isVerified ? 'rgba(16, 185, 129, 0.12)' : isPartial ? 'rgba(245, 158, 11, 0.12)' : 'rgba(100, 116, 139, 0.12)',
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '4px',
+                            fontWeight: 700,
+                            fontSize: '0.75rem',
+                          }}
+                        >
+                          {isVerified ? <CheckCircle2 size={13} /> : <Clock size={13} />}
+                          {vStatus}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)' }}>
+                        {ev.verified ? (ev.verified_by || 'IQAC Committee') : 'Pending Review'}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -315,22 +409,113 @@ export default function SkillEvidencePage() {
       </div>
 
       {/* Add Evidence Modal */}
-      {showAddModal && (
-        <Modal title="Record New Skill Evidence" onClose={() => setShowAddModal(false)}>
+      {showEvidenceModal && (
+        <Modal
+          isOpen={showEvidenceModal}
+          title="Submit Skill Evidence"
+          onClose={() => setShowEvidenceModal(false)}
+        >
+          {modalError && (
+            <div
+              className="alert alert-danger"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '1rem',
+                padding: '0.625rem 0.875rem',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid #ef4444',
+                color: '#b91c1c',
+                borderRadius: '6px',
+                fontSize: '0.8125rem',
+              }}
+            >
+              <AlertCircle size={16} />
+              <span>{modalError}</span>
+            </div>
+          )}
+
           <form onSubmit={handleAddEvidence} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Faculty Member */}
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>
-                Skill Name *
+                Faculty Member *
               </label>
-              <input
-                type="text"
+              <select
                 className="input"
-                value={formData.skill_name}
-                onChange={(e) => setFormData({ ...formData, skill_name: e.target.value })}
-                required
-              />
+                value={formData.faculty_id}
+                onChange={(e) => {
+                  const fId = parseInt(e.target.value, 10);
+                  setFormData({ ...formData, faculty_id: fId });
+                  loadEvidenceData(fId);
+                }}
+                disabled={!isAdmin && !isApprover}
+              >
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.full_name} ({f.department_name || f.faculty_code})
+                  </option>
+                ))}
+              </select>
             </div>
 
+            {/* Skill Name */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700 }}>Skill Name *</label>
+                {verifiedSkills.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomSkill(!isCustomSkill);
+                      if (!isCustomSkill) {
+                        setFormData((p) => ({ ...p, skill_name: '' }));
+                      } else {
+                        setFormData((p) => ({ ...p, skill_name: verifiedSkills[0]?.skill_name || 'ANSYS' }));
+                      }
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#2563eb',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      padding: 0,
+                    }}
+                  >
+                    {isCustomSkill ? 'Select from faculty skills' : '+ Enter custom skill'}
+                  </button>
+                )}
+              </div>
+
+              {!isCustomSkill && verifiedSkills.length > 0 ? (
+                <select
+                  className="input"
+                  value={formData.skill_name}
+                  onChange={(e) => setFormData({ ...formData, skill_name: e.target.value })}
+                  required
+                >
+                  {verifiedSkills.map((s, idx) => (
+                    <option key={idx} value={s.skill_name}>
+                      {s.skill_name} [{s.proficiency_level}]
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. ANSYS, SolidWorks, Generative AI..."
+                  value={formData.skill_name}
+                  onChange={(e) => setFormData({ ...formData, skill_name: e.target.value })}
+                  required
+                />
+              )}
+            </div>
+
+            {/* Evidence Type */}
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>
                 Evidence Type *
@@ -340,39 +525,42 @@ export default function SkillEvidencePage() {
                 value={formData.evidence_type}
                 onChange={(e) => setFormData({ ...formData, evidence_type: e.target.value })}
               >
-                <option value="ASSESSMENT">Post-Assessment Score</option>
-                <option value="CERTIFICATE">Certificate of Completion</option>
-                <option value="PROJECT">Project / Artifact Submission</option>
-                <option value="TRAINER_EVALUATION">Trainer Evaluation Rubric</option>
-                <option value="PRACTICAL_ACTIVITY">Practical Laboratory Activity</option>
-                <option value="WORKSHOP_COMPLETION">Verified Workshop Completion</option>
+                <option value="ASSESSMENT">ASSESSMENT — Post-Assessment Score</option>
+                <option value="CERTIFICATE">CERTIFICATE — Certificate of Completion</option>
+                <option value="PROJECT">PROJECT — Capstone Project / Artifact Submission</option>
+                <option value="PRACTICAL_ACTIVITY">PRACTICAL_ACTIVITY — Practical Laboratory Activity</option>
+                <option value="TRAINER_EVALUATION">TRAINER_EVALUATION — Trainer Evaluation Rubric</option>
+                <option value="WORKSHOP_COMPLETION">WORKSHOP_COMPLETION — Verified Workshop Completion</option>
               </select>
             </div>
 
+            {/* Evidence Reference Details */}
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>
-                Evidence Reference Details *
+                Evidence Reference / Artifact *
               </label>
               <textarea
                 className="input"
                 rows={3}
-                placeholder="e.g. Completed hands-on capstone project with GitHub repo link or exam attempt ID..."
+                placeholder="e.g. ANSYS structural analysis laboratory exercise or report / repository link..."
                 value={formData.evidence_reference}
                 onChange={(e) => setFormData({ ...formData, evidence_reference: e.target.value })}
                 required
               />
             </div>
 
+            {/* Score & Verification Status Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>
-                  Score / Percentage (Optional)
+                  Score (0–100)
                 </label>
                 <input
                   type="number"
                   className="input"
                   min="0"
                   max="100"
+                  placeholder="e.g. 85"
                   value={formData.score}
                   onChange={(e) => setFormData({ ...formData, score: e.target.value })}
                 />
@@ -380,23 +568,60 @@ export default function SkillEvidencePage() {
 
               <div>
                 <label style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>
+                  Verification Status *
+                </label>
+                <select
+                  className="input"
+                  value={formData.verification_status}
+                  onChange={(e) => setFormData({ ...formData, verification_status: e.target.value })}
+                  disabled={!isAdmin && !isApprover}
+                >
+                  <option value="UNVERIFIED">UNVERIFIED (Default)</option>
+                  {(isAdmin || isApprover) && (
+                    <>
+                      <option value="PARTIALLY_VERIFIED">PARTIALLY_VERIFIED</option>
+                      <option value="VERIFIED">VERIFIED</option>
+                    </>
+                  )}
+                </select>
+                {!isAdmin && !isApprover && (
+                  <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.2rem' }}>
+                    Faculty submissions require IQAC verification.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {(isAdmin || isApprover) && formData.verification_status !== 'UNVERIFIED' && (
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>
                   Verified By
                 </label>
                 <input
                   type="text"
                   className="input"
+                  placeholder="e.g. IQAC Academic Committee / HOD"
                   value={formData.verified_by}
                   onChange={(e) => setFormData({ ...formData, verified_by: e.target.value })}
                 />
               </div>
-            </div>
+            )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <button type="button" onClick={() => setShowAddModal(false)} className="btn btn-outline btn-sm">
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowEvidenceModal(false)}
+                className="btn btn-outline btn-sm"
+              >
                 Cancel
               </button>
-              <button type="submit" disabled={submitting} className="btn btn-primary btn-sm">
-                {submitting ? 'Recording...' : 'Save Evidence'}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="btn btn-primary btn-sm"
+                style={{ minWidth: '130px' }}
+              >
+                {submitting ? 'Submitting...' : '+ Submit Evidence'}
               </button>
             </div>
           </form>

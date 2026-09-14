@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import { FileSpreadsheet, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function FDPCreate() {
@@ -36,14 +36,40 @@ export default function FDPCreate() {
   }, []);
 
   const loadPrerequisites = async () => {
+    setError('');
     try {
-      const [depts, facs] = await Promise.all([api.getDepartments(), api.getFacultyList()]);
-      setDepartments(depts);
-      setFacultyList(facs);
-      if (depts.length > 0) setFormData((prev) => ({ ...prev, department_id: depts[0].id }));
-      if (facs.length > 0) setFormData((prev) => ({ ...prev, coordinator_faculty_id: facs[0].id }));
+      const [deptRes, facRes] = await Promise.allSettled([api.getDepartments(), api.getFacultyList()]);
+
+      let depts = [];
+      if (deptRes.status === 'fulfilled') {
+        depts = asArray(deptRes.value, 'departments');
+        setDepartments(depts);
+        if (depts.length > 0) {
+          setFormData((prev) => ({
+            ...prev,
+            department_id: prev.department_id || depts[0].id
+          }));
+        }
+      } else {
+        console.error('Failed to load departments:', deptRes.reason);
+        setError(`Failed to load departments: ${deptRes.reason?.message || 'Network error'}`);
+      }
+
+      if (facRes.status === 'fulfilled') {
+        const facs = asArray(facRes.value, 'faculty', 'faculty_members');
+        setFacultyList(facs);
+        if (facs.length > 0) {
+          setFormData((prev) => ({
+            ...prev,
+            coordinator_faculty_id: prev.coordinator_faculty_id || facs[0].id
+          }));
+        }
+      } else {
+        console.error('Failed to load faculty list:', facRes.reason);
+      }
     } catch (err) {
       console.error(err);
+      setError(err.message || 'Failed to load prerequisites');
     }
   };
 
@@ -119,9 +145,13 @@ export default function FDPCreate() {
                 className="form-select"
                 value={formData.department_id}
                 onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
+                required
               >
+                {departments.length === 0 && <option value="">Loading departments...</option>}
                 {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.code})
+                  </option>
                 ))}
               </select>
             </div>
@@ -238,8 +268,9 @@ export default function FDPCreate() {
                 value={formData.coordinator_faculty_id}
                 onChange={(e) => setFormData({ ...formData, coordinator_faculty_id: e.target.value })}
               >
+                <option value="">Select Coordinator (Optional)</option>
                 {facultyList.map((f) => (
-                  <option key={f.id} value={f.id}>{f.full_name} ({f.faculty_code})</option>
+                  <option key={f.id} value={f.id}>{f.full_name} ({f.department_name || f.faculty_code})</option>
                 ))}
               </select>
             </div>

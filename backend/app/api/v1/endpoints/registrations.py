@@ -37,27 +37,34 @@ def register_for_event(id: int, reg_in: RegistrationCreate, db: Session = Depend
         )
 
     # 2. Faculty identification and linking
-    faculty = None
-    if reg_in.faculty_id:
-        faculty = db.query(Faculty).filter(Faculty.id == reg_in.faculty_id).first()
-    
+    from app.services.faculty_registration_service import FacultyRegistrationService
+
+    reg_dict = {
+        "faculty_id": reg_in.faculty_id,
+        "faculty_code": reg_in.faculty_code,
+        "email": reg_in.email,
+        "full_name": reg_in.full_name,
+        "phone": reg_in.phone,
+        "department": reg_in.department,
+        "designation": reg_in.designation,
+        "institution_name": reg_in.institution_name,
+        "years_of_experience": reg_in.years_of_experience,
+        "teaching_interests": reg_in.teaching_interests,
+        "research_interests": reg_in.research_interests,
+    }
+
+    # Search existing first
+    faculty = FacultyRegistrationService.find_existing_faculty(db, reg_dict)
+
     clean_email = reg_in.email.strip().lower() if reg_in.email else None
     clean_code = reg_in.faculty_code.strip().upper() if reg_in.faculty_code else None
 
-    if not faculty and (clean_email or clean_code):
-        conds = []
-        if clean_email:
-            conds.append(Faculty.email.ilike(clean_email))
-        if clean_code:
-            conds.append(Faculty.faculty_code.ilike(clean_code))
-        faculty = db.query(Faculty).filter(or_(*conds)).first()
-
-    # Determine core values
+    # Determine interim core values
     p_name = reg_in.full_name or (faculty.full_name if faculty else "Participant")
-    f_code = clean_code or (faculty.faculty_code if faculty else None)
-    f_email = clean_email or (faculty.email if faculty else None)
+    f_code = (faculty.faculty_code if faculty else clean_code)
+    f_email = (faculty.email if faculty else clean_email)
     f_phone = reg_in.phone or (getattr(faculty, "phone", None) if faculty else None)
-    f_dept = reg_in.department or (faculty.department.code if faculty and faculty.department else None)
+    f_dept = (faculty.department.code if faculty and faculty.department else reg_in.department)
     f_desig = reg_in.designation or (faculty.designation if faculty else "Faculty")
     f_inst = reg_in.institution_name or "Vignan's University"
     exp_years = reg_in.years_of_experience if reg_in.years_of_experience is not None else (getattr(faculty, "years_of_experience", 0.0) if faculty else 0.0)
@@ -96,7 +103,19 @@ def register_for_event(id: int, reg_in: RegistrationCreate, db: Session = Depend
                 detail=f"Registration restricted to Department of {event.department.name}."
             )
 
-    # 5. Generate serial registration code and safe QR token
+    # 5. Provision or link Faculty profile
+    if not faculty:
+        faculty = FacultyRegistrationService.get_or_create_faculty_from_registration(db, reg_dict)
+
+    if faculty:
+        linked_faculty_id = faculty.id
+        p_name = faculty.full_name or p_name
+        f_code = faculty.faculty_code or f_code
+        f_email = faculty.email or f_email
+        f_dept = faculty.department.code if faculty.department else f_dept
+        f_desig = faculty.designation or f_desig
+
+    # 6. Generate serial registration code and safe QR token
     total_existing = db.query(Registration).count()
     serial_no = total_existing + 1
     reg_code = f"REG-VU2026-{serial_no:04d}"

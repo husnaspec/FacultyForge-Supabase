@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import StatusBadge from '../components/StatusBadge';
-import { Calendar, Search, PlusCircle, Sparkles, Eye } from 'lucide-react';
+import { Calendar, Search, PlusCircle, Sparkles, Eye, AlertCircle } from 'lucide-react';
 
 export default function FDPList() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -16,14 +17,16 @@ export default function FDPList() {
 
   const loadEvents = async () => {
     setLoading(true);
+    setError('');
     try {
       const data = await api.getEvents({
         status: statusFilter || undefined,
         search: search || undefined,
       });
-      setEvents(data);
+      setEvents(asArray(data, 'events'));
     } catch (err) {
       console.error(err);
+      setError(err.message || 'Failed to load programmes');
     } finally {
       setLoading(false);
     }
@@ -82,6 +85,13 @@ export default function FDPList() {
         </select>
       </div>
 
+      {error && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Events Table */}
       <div className="card" style={{ padding: 0 }}>
         <div className="table-container" style={{ border: 'none' }}>
@@ -100,10 +110,16 @@ export default function FDPList() {
               </tr>
             </thead>
             <tbody>
-              {events.length === 0 ? (
+              {loading ? (
                 <tr>
                   <td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                    No programmes found matching query.
+                    Loading programmes from backend...
+                  </td>
+                </tr>
+              ) : events.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    {error ? 'Could not load programmes.' : 'No programmes found matching query.'}
                   </td>
                 </tr>
               ) : (
@@ -113,7 +129,7 @@ export default function FDPList() {
                       {e.event_code}
                     </td>
                     <td>
-                      <div style={{ fontWeight: 700 }}>{e.title}</div>
+                      <div style={{ fontWeight: 700 }}>{e.title || e.programme_title}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                         Coordinator: {e.coordinator_name || 'Academic Committee'}
                       </div>

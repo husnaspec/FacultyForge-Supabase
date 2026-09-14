@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import StatusBadge from '../components/StatusBadge';
@@ -113,26 +113,32 @@ export default function AssessmentsPage() {
   const loadEvents = async () => {
     try {
       const list = await api.getEvents();
-      setEvents(list);
-      if (!selectedEventId && list.length > 0) {
-        setSelectedEventId(list[0].id);
+      const eventList = asArray(list, 'events');
+      setEvents(eventList);
+      if (eventList.length > 0) {
+        if (!selectedEventId || !eventList.some((e) => String(e.id) === String(selectedEventId))) {
+          setSelectedEventId(String(eventList[0].id));
+        }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load events:', err);
+      setErrorMsg(err.message || 'Failed to load programmes');
     }
   };
 
   const loadAssessmentsAndImpact = async (eId) => {
+    if (!eId) return;
     setLoading(true);
     try {
       const [assList, impact] = await Promise.all([
         api.getEventAssessments(eId),
         api.getEventLearningImpact(eId),
       ]);
-      setAssessments(assList);
-      setLearningImpact(impact);
+      setAssessments(asArray(assList, 'assessments'));
+      setLearningImpact(impact && typeof impact === 'object' ? impact : null);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load assessments:', err);
+      setErrorMsg(err.message || 'Failed to load assessment data');
     } finally {
       setLoading(false);
     }
@@ -178,6 +184,13 @@ export default function AssessmentsPage() {
         </p>
       </div>
 
+      {errorMsg && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={16} />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
       {/* Event Selector */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>Select Programme:</label>
@@ -187,9 +200,10 @@ export default function AssessmentsPage() {
           value={selectedEventId}
           onChange={(e) => setSelectedEventId(e.target.value)}
         >
+          {events.length === 0 && <option value="">No programmes available</option>}
           {events.map((e) => (
             <option key={e.id} value={e.id}>
-              {e.event_code} - {e.title}
+              {e.event_code} - {e.title || e.programme_title}
             </option>
           ))}
         </select>

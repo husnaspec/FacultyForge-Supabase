@@ -33,16 +33,16 @@ class SeedService:
 
         # 2. Compliance Rules
         rule_annual = ComplianceRule(
-            rule_name="Annual Faculty Development Requirement",
-            description="Mandatory 40 hours of continuous professional and pedagogical development per academic year.",
+            rule_name="Institutional Annual Faculty Development Requirement",
+            description="Institutional benchmark of 40 hours of continuous professional and pedagogical development per academic year.",
             minimum_training_hours=40.0,
             period_type="ANNUAL",
             required_topics="Teaching Methodology, Research, Emerging Technologies",
             is_active=True
         )
         rule_tenure = ComplianceRule(
-            rule_name="NBA/NAAC Accreditation Continuous Development Rule",
-            description="Minimum 24 hours of outcome-based and research-oriented development per semester.",
+            rule_name="Institutional Accreditation-Support Development Rule",
+            description="Institutional benchmark of 24 hours of outcome-based and research-oriented development per semester.",
             minimum_training_hours=24.0,
             period_type="SEMESTER",
             required_topics="Outcome Based Education, Research Methodology",

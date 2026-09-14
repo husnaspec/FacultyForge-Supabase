@@ -19,6 +19,7 @@ class Settings:
     TAGLINE: str = "From Training Needs to Measurable Faculty Growth"
     API_V1_STR: str = os.getenv("API_V1_STR", "/api/v1")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "facultyforge-secret-key-change-in-production")
     
     # Canonical SQLite configuration

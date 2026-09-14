@@ -1,4 +1,16 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const API_BASE = RAW_BASE.replace(/\/+$/, '');
+
+export function asArray(res, ...fallbackKeys) {
+  if (Array.isArray(res)) return res;
+  if (!res || typeof res !== 'object') return [];
+  for (const key of fallbackKeys) {
+    if (Array.isArray(res[key])) return res[key];
+  }
+  if (Array.isArray(res.data)) return res.data;
+  if (Array.isArray(res.items)) return res.items;
+  return [];
+}
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
@@ -37,11 +49,18 @@ async function request(endpoint, options = {}) {
         errorMsg = `API Request Failed (${res.status}${res.statusText ? ': ' + res.statusText : ''})${text ? ' - ' + text : ''}`;
       }
       console.error(`[API Error] ${options.method || 'GET'} ${url} (${res.status}):`, errorMsg, data);
-      throw new Error(errorMsg);
+      const apiErr = new Error(errorMsg);
+      apiErr.status = res.status;
+      apiErr.data = data;
+      throw apiErr;
     }
     return data;
   } catch (err) {
-    const isNetworkError = err.name === 'TypeError' && err.message?.includes('fetch');
+    if (err.status) {
+      // Preserve explicit HTTP error statuses (400, 404, 409, 422, 500)
+      throw err;
+    }
+    const isNetworkError = err.name === 'TypeError' && err.message?.toLowerCase().includes('fetch');
     const displayMsg = isNetworkError
       ? `Cannot connect to backend at ${url}. Please ensure backend is running at http://127.0.0.1:8000.`
       : (err.message || 'API request failed');
@@ -68,7 +87,8 @@ export const api = {
     const qs = new URLSearchParams();
     if (params.department_id) qs.append('department_id', params.department_id);
     if (params.search) qs.append('search', params.search);
-    return request(`/faculty?${qs.toString()}`);
+    const qStr = qs.toString();
+    return request(`/faculty${qStr ? `?${qStr}` : ''}`);
   },
   getFaculty: (id) => request(`/faculty/${id}`),
   createFaculty: (payload) => request('/faculty', { method: 'POST', body: JSON.stringify(payload) }),
@@ -95,7 +115,8 @@ export const api = {
     if (params.department_id) qs.append('department_id', params.department_id);
     if (params.event_type) qs.append('event_type', params.event_type);
     if (params.search) qs.append('search', params.search);
-    return request(`/events?${qs.toString()}`);
+    const qStr = qs.toString();
+    return request(`/events${qStr ? `?${qStr}` : ''}`);
   },
   getEvent: (id) => request(`/events/${id}`),
   createEvent: (payload) => request('/events', { method: 'POST', body: JSON.stringify(payload) }),
@@ -150,6 +171,7 @@ export const api = {
   getEventFeedbackIntelligence: (eventId) => request(`/events/${eventId}/feedback-intelligence`),
 
   // Certificates
+  getCertificateEligibility: (eventId) => request(`/events/${eventId}/certificate-eligibility`),
   generateCertificates: (eventId, facultyIds) =>
     request(`/events/${eventId}/generate-certificates`, { method: 'POST', body: JSON.stringify(facultyIds ? { faculty_ids: facultyIds } : {}) }),
   getEventCertificates: (eventId) => request(`/certificates/event/${eventId}`),
@@ -201,14 +223,27 @@ export const api = {
     const qs = skillName ? `?skill_name=${encodeURIComponent(skillName)}` : '';
     return request(`/faculty/${facultyId}/skill-evidence${qs}`);
   },
-  addSkillEvidence: (facultyId, payload) =>
-    request(`/faculty/${facultyId}/skill-evidence`, { method: 'POST', body: JSON.stringify(payload) }),
+  addSkillEvidence: (facultyId, payload) => {
+    const body = payload || (typeof facultyId === 'object' ? facultyId : {});
+    const facId = (typeof facultyId === 'number' || typeof facultyId === 'string') ? facultyId : body.faculty_id;
+    if (facId) {
+      return request(`/faculty/${facId}/skill-evidence`, { method: 'POST', body: JSON.stringify(body) });
+    }
+    return request('/skill-evidence', { method: 'POST', body: JSON.stringify(body) });
+  },
   getVerifiedSkills: (facultyId) => request(`/faculty/${facultyId}/verified-skills`),
 
   // Teaching Impact
-  recordTeachingImpact: (facultyId, payload) =>
-    request(`/faculty/${facultyId}/teaching-impact`, { method: 'POST', body: JSON.stringify(payload) }),
+  recordTeachingImpact: (facultyId, payload) => {
+    const body = payload || (typeof facultyId === 'object' ? facultyId : {});
+    const facId = (typeof facultyId === 'number' || typeof facultyId === 'string') ? facultyId : body.faculty_id;
+    if (facId) {
+      return request(`/faculty/${facId}/teaching-impact`, { method: 'POST', body: JSON.stringify(body) });
+    }
+    return request('/teaching-impact', { method: 'POST', body: JSON.stringify(body) });
+  },
   getFacultyTeachingImpact: (facultyId) => request(`/faculty/${facultyId}/teaching-impact`),
+  getAllTeachingImpact: () => request('/teaching-impact'),
   getEventTeachingImpact: (eventId) => request(`/events/${eventId}/teaching-impact`),
   verifyTeachingImpact: (impactId, payload = {}) =>
     request(`/teaching-impact/${impactId}/verify`, { method: 'POST', body: JSON.stringify(payload) }),

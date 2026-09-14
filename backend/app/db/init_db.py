@@ -129,3 +129,14 @@ def init_db_schema():
         except Exception as e:
             print(f"[Schema Init] Note on column check: {e}")
 
+    # Safe startup reconciliation of unlinked registrations
+    try:
+        from app.db.session import SessionLocal
+        from app.services.faculty_registration_service import FacultyRegistrationService
+        db = SessionLocal()
+        reconciled = FacultyRegistrationService.reconcile_unlinked_registrations(db)
+        if reconciled > 0:
+            print(f"[Startup Reconciliation] Reconciled {reconciled} registrations to faculty records.")
+        db.close()
+    except Exception as e:
+        print(f"[Startup Reconciliation] Note: {e}")

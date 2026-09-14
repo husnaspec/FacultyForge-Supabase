@@ -43,3 +43,27 @@ backend/.env
 .DS_Store
 Thumbs.db
 *.log
+
+# ===== FacultyForge private/local data =====
+.env
+frontend/.env
+backend/.env
+
+# SQLite databases and runtime files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Local database backups
+backend/backups/
+
+# Python generated files
+__pycache__/
+*.pyc
+
+# Frontend generated files
+node_modules/
+dist/
+

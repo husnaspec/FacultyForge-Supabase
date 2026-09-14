@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import {
   ClipboardList, QrCode, CheckCircle2, AlertCircle,
   Camera, CameraOff, Upload, ArrowRight, Clock, ShieldCheck,
@@ -56,12 +56,16 @@ export default function AttendancePage() {
   const loadEvents = async () => {
     try {
       const list = await api.getEvents();
-      setEvents(list);
-      if (!selectedEventId && list.length > 0) {
-        setSelectedEventId(list[0].id);
+      const eventList = asArray(list, 'events');
+      setEvents(eventList);
+      if (eventList.length > 0) {
+        if (!selectedEventId || !eventList.some((e) => String(e.id) === String(selectedEventId))) {
+          setSelectedEventId(String(eventList[0].id));
+        }
       }
     } catch (err) {
       console.error('Failed to load events:', err);
+      setErrorMsg(err.message || 'Failed to load programmes');
     }
   };
 
@@ -98,10 +102,11 @@ export default function AttendancePage() {
         api.getEventAttendance(eId, sessId || undefined),
         api.getEventRegistrations(eId),
       ]);
-      setAttendanceData(att);
-      setRegistrations(regs);
+      setAttendanceData(att && typeof att === 'object' ? att : null);
+      setRegistrations(asArray(regs, 'registrations'));
     } catch (err) {
       console.error('Failed to load attendance:', err);
+      setErrorMsg(err.message || 'Failed to load attendance records');
     } finally {
       setLoading(false);
     }
@@ -250,9 +255,10 @@ export default function AttendancePage() {
                 setStatusMsg('');
               }}
             >
+              {events.length === 0 && <option value="">No programmes available</option>}
               {events.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.event_code} - {e.title}
+                  {e.event_code} - {e.title || e.programme_title}
                 </option>
               ))}
             </select>

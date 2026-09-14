@@ -81,7 +81,15 @@ class TrainingSimulatorAgent:
             f"and an estimated +{compliance_pct_boost}% progression towards the 40-hour institutional CPD target."
         )
 
-        programme_title = f"{topic} for Engineering Faculty"
+        # Deduplicate repeated phrases such as 'for Engineering Faculty'
+        clean_topic = topic.strip()
+        lower_t = clean_topic.lower()
+        if "for engineering faculty" in lower_t:
+            programme_title = clean_topic
+        elif lower_t.endswith("for faculty"):
+            programme_title = f"{clean_topic[:-11].strip()} for Engineering Faculty"
+        else:
+            programme_title = f"{clean_topic} for Engineering Faculty"
 
         # Prepare draft event payload for one-click creation
         draft_payload = {

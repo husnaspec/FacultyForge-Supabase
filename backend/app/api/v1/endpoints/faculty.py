@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.models.faculty import Faculty
 from app.models.department import Department
 from app.models.skill import SkillGap, TrainingRecommendation
+from app.models.skill_evidence import SkillEvidence
 from app.schemas import (
     FacultyCreate, FacultyUpdate, FacultyResponse,
     DigitalPassportResponse, SkillGapItem, TrainingRecommendationItem,
@@ -206,6 +207,21 @@ def get_faculty_compliance(id: int, db: Session = Depends(get_db)):
 
 # ======================= SKILL EVIDENCE ENDPOINTS =======================
 
+def _build_evidence_response(ev: SkillEvidence) -> SkillEvidenceResponse:
+    v_status = "VERIFIED" if ev.verified else "UNVERIFIED"
+    return SkillEvidenceResponse(
+        id=ev.id,
+        faculty_id=ev.faculty_id,
+        skill_name=ev.skill_name,
+        evidence_type=ev.evidence_type,
+        evidence_reference=ev.evidence_reference,
+        score=ev.score,
+        verified=bool(ev.verified),
+        verification_status=v_status,
+        verified_by=ev.verified_by,
+        created_at=ev.created_at
+    )
+
 @router.post("/faculty/{id}/skill-evidence", response_model=SkillEvidenceResponse, status_code=status.HTTP_201_CREATED)
 def add_faculty_skill_evidence(
     id: int,
@@ -213,18 +229,48 @@ def add_faculty_skill_evidence(
     db: Session = Depends(get_db)
 ):
     try:
-        return skill_evidence_service.add_evidence(
+        faculty = db.query(Faculty).filter(Faculty.id == id).first()
+        if not faculty:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Faculty with id {id} not found.")
+
+        # Determine verification boolean from verification_status or verified flag
+        verified = True
+        if ev_in.verified is not None:
+            verified = bool(ev_in.verified)
+        elif ev_in.verification_status:
+            verified = (ev_in.verification_status.strip().upper() in ["VERIFIED", "PARTIALLY_VERIFIED"])
+
+        verified_by = ev_in.verified_by
+        if not verified:
+            verified_by = None
+        elif not verified_by:
+            verified_by = "IQAC Academic Committee"
+
+        evidence = skill_evidence_service.add_evidence(
             db,
             faculty_id=id,
-            skill_name=ev_in.skill_name,
-            evidence_type=ev_in.evidence_type,
-            evidence_reference=ev_in.evidence_reference,
+            skill_name=ev_in.skill_name.strip(),
+            evidence_type=ev_in.evidence_type.strip(),
+            evidence_reference=ev_in.evidence_reference.strip(),
             score=ev_in.score,
-            verified=ev_in.verified,
-            verified_by=ev_in.verified_by
+            verified=verified,
+            verified_by=verified_by
         )
+        return _build_evidence_response(evidence)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+@router.post("/skill-evidence", response_model=SkillEvidenceResponse, status_code=status.HTTP_201_CREATED)
+def create_skill_evidence_standalone(
+    ev_in: SkillEvidenceCreate,
+    db: Session = Depends(get_db)
+):
+    fac_id = ev_in.faculty_id
+    if not fac_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="faculty_id is required in request body.")
+    return add_faculty_skill_evidence(id=fac_id, ev_in=ev_in, db=db)
 
 @router.get("/faculty/{id}/skill-evidence", response_model=List[SkillEvidenceResponse])
 def get_faculty_skill_evidence(
@@ -235,7 +281,22 @@ def get_faculty_skill_evidence(
     faculty = db.query(Faculty).filter(Faculty.id == id).first()
     if not faculty:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty not found.")
-    return skill_evidence_service.get_faculty_evidence(db, faculty_id=id, skill_name=skill_name)
+    evs = skill_evidence_service.get_faculty_evidence(db, faculty_id=id, skill_name=skill_name)
+    return [_build_evidence_response(ev) for ev in evs]
+
+@router.get("/skill-evidence", response_model=List[SkillEvidenceResponse])
+def list_skill_evidence(
+    faculty_id: Optional[int] = None,
+    skill_name: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    if faculty_id:
+        return get_faculty_skill_evidence(id=faculty_id, skill_name=skill_name, db=db)
+    query = db.query(SkillEvidence)
+    if skill_name:
+        query = query.filter(SkillEvidence.skill_name.ilike(f"%{skill_name.strip()}%"))
+    evs = query.order_by(SkillEvidence.created_at.desc()).all()
+    return [_build_evidence_response(ev) for ev in evs]
 
 @router.get("/faculty/{id}/verified-skills", response_model=List[VerifiedSkillItem])
 def get_faculty_verified_skills(
@@ -322,21 +383,6 @@ def record_teaching_impact(
     db.add(impact)
     db.commit()
     db.refresh(impact)
-
-    # Also log practical activity evidence automatically
-    try:
-        skill_evidence_service.add_evidence(
-            db,
-            faculty_id=id,
-            skill_name=impact.skill_name,
-            evidence_type="PRACTICAL_ACTIVITY",
-            evidence_reference=f"Applied in {impact.application_type}: {desc[:80]}",
-            score=impact.self_rating * 20.0,
-            verified=(status_val == "VERIFIED"),
-            verified_by="HOD Classroom Review" if status_val == "VERIFIED" else None
-        )
-    except Exception:
-        pass
 
     return _build_impact_response(impact)
 
@@ -439,9 +485,11 @@ def get_faculty_programmes(
                 "relationship": "ATTENDED"
             }
 
-    # 3. All completed programmes as fallback
-    completed = db.query(Event).filter(Event.status == "COMPLETED").all()
-    for c in completed:
+    # 3. All completed or available programmes as fallback
+    events_pool = db.query(Event).filter(
+        Event.status.in_(["COMPLETED", "APPROVED", "ONGOING", "REGISTRATION_OPEN"])
+    ).all()
+    for c in events_pool:
         if c.id not in events_map:
             events_map[c.id] = {
                 "id": c.id,
@@ -449,7 +497,7 @@ def get_faculty_programmes(
                 "event_code": c.event_code,
                 "status": c.status,
                 "delivery_mode": c.delivery_mode,
-                "relationship": "AVAILABLE"
+                "relationship": "COMPLETED" if c.status == "COMPLETED" else "APPROVED"
             }
 
     return list(events_map.values())

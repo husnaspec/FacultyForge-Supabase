@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import {
@@ -53,26 +53,32 @@ export default function FeedbackIntelligencePage() {
   const loadEvents = async () => {
     try {
       const list = await api.getEvents();
-      setEvents(list);
-      if (!selectedEventId && list.length > 0) {
-        setSelectedEventId(list[0].id);
+      const eventList = asArray(list, 'events');
+      setEvents(eventList);
+      if (eventList.length > 0) {
+        if (!selectedEventId || !eventList.some((e) => String(e.id) === String(selectedEventId))) {
+          setSelectedEventId(String(eventList[0].id));
+        }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load events:', err);
+      setActionError(err.message || 'Failed to load programmes');
     }
   };
 
   const loadIntelligence = async (eId) => {
+    if (!eId) return;
     setLoading(true);
     try {
       const [intel, fbList] = await Promise.all([
         api.getEventFeedbackIntelligence(eId),
         api.getEventFeedback(eId),
       ]);
-      setFeedbackIntel(intel);
-      setFeedbacks(fbList);
+      setFeedbackIntel(intel && typeof intel === 'object' ? intel : null);
+      setFeedbacks(asArray(fbList, 'feedback'));
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load feedback intelligence:', err);
+      setActionError(err.message || 'Failed to load feedback intelligence data');
     } finally {
       setLoading(false);
     }
@@ -123,20 +129,21 @@ export default function FeedbackIntelligencePage() {
       {/* Event Selector & Action Button */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>Select Programme:</label>
-          <select
-            className="form-select"
-            style={{ minWidth: '320px' }}
-            value={selectedEventId}
-            onChange={(e) => setSelectedEventId(e.target.value)}
-          >
-            {events.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.event_code} - {e.title}
-              </option>
-            ))}
-          </select>
-        </div>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>Programme:</label>
+            <select
+              className="form-select"
+              style={{ minWidth: '300px' }}
+              value={selectedEventId}
+              onChange={(e) => setSelectedEventId(e.target.value)}
+            >
+              {events.length === 0 && <option value="">No programmes available</option>}
+              {events.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.event_code} - {e.title || e.programme_title}
+                </option>
+              ))}
+            </select>
+          </div>
 
         <button onClick={() => setShowSubmitModal(true)} className="btn btn-primary btn-sm">
           <Send size={14} />

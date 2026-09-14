@@ -43,35 +43,89 @@ class PassportService:
         if fdps_count == 0 and certificates:
             fdps_count = len(certificates)
 
-        # Skills acquired
-        db_skills = db.query(FacultySkill).filter(FacultySkill.faculty_id == faculty_id).all()
-        skills_set = set(s.skill_name for s in db_skills)
+        # 1. Profile skills: declared in faculty.existing_skills or self-reported
+        profile_skills_set = set()
         if faculty.existing_skills:
             for s in faculty.existing_skills.split(","):
                 if s.strip():
-                    skills_set.add(s.strip())
+                    profile_skills_set.add(s.strip())
+        db_skills = db.query(FacultySkill).filter(FacultySkill.faculty_id == faculty_id).all()
+        for s in db_skills:
+            if s.source == "SELF_REPORTED" or s.verification_status == "UNVERIFIED":
+                profile_skills_set.add(s.skill_name.strip())
+        profile_skills = sorted(list(profile_skills_set))
+
+        # 2. Validated skills: only when verified through completed events, valid certificates, or institutional evidence records
+        validated_skills_set = set()
         for e in completed_events:
             if "AI" in e.title:
-                skills_set.add("Generative AI")
-                skills_set.add("Machine Learning")
+                validated_skills_set.add("Generative AI")
+                validated_skills_set.add("Machine Learning")
             if "Cyber" in e.title:
-                skills_set.add("Cybersecurity")
+                validated_skills_set.add("Cybersecurity")
             if "Research" in e.title:
-                skills_set.add("Research Methodology")
+                validated_skills_set.add("Research Methodology")
             if "Outcome" in e.title or "OBE" in e.title:
-                skills_set.add("Outcome Based Education")
+                validated_skills_set.add("Outcome Based Education")
 
-        # Average learning gain across attended events with both pre/post
+        for s in db_skills:
+            if s.verification_status == "VERIFIED" and s.source in ["FDP_ASSESSMENT", "EVIDENCE_VALIDATED"]:
+                validated_skills_set.add(s.skill_name.strip())
+
+        # Also check verified skill evidence records from institutional training/evaluations
+        if completed_events or certificates:
+            try:
+                from app.models.skill_evidence import SkillEvidence
+                verified_evs = db.query(SkillEvidence).filter(
+                    SkillEvidence.faculty_id == faculty_id,
+                    SkillEvidence.verified == True
+                ).all()
+                for ev in verified_evs:
+                    validated_skills_set.add(ev.skill_name.strip())
+            except Exception:
+                pass
+
+        validated_skills = sorted(list(validated_skills_set))
+        has_verified_skills = len(validated_skills) > 0
+
+        # 3. Average learning gain across attended events with both pre/post
+        faculty_attempts = db.query(AssessmentAttempt).filter(AssessmentAttempt.faculty_id == faculty_id).all()
+        attempt_assess_ids = {a.assessment_id for a in faculty_attempts}
+
+        assessed_event_ids = set(e.id for e in completed_events)
+        if attempt_assess_ids:
+            event_rows = db.query(Assessment.event_id).filter(Assessment.id.in_(attempt_assess_ids)).distinct().all()
+            for r in event_rows:
+                assessed_event_ids.add(r[0])
+
         learning_gains = []
-        for e in completed_events:
-            pre_a = db.query(Assessment).filter(Assessment.event_id == e.id, Assessment.assessment_type == "PRE").first()
-            post_a = db.query(Assessment).filter(Assessment.event_id == e.id, Assessment.assessment_type == "POST").first()
+        for ev_id in assessed_event_ids:
+            pre_a = db.query(Assessment).filter(Assessment.event_id == ev_id, Assessment.assessment_type == "PRE").first()
+            post_a = db.query(Assessment).filter(Assessment.event_id == ev_id, Assessment.assessment_type == "POST").first()
             if pre_a and post_a:
                 att_pre = db.query(AssessmentAttempt).filter(AssessmentAttempt.assessment_id == pre_a.id, AssessmentAttempt.faculty_id == faculty_id).first()
                 att_post = db.query(AssessmentAttempt).filter(AssessmentAttempt.assessment_id == post_a.id, AssessmentAttempt.faculty_id == faculty_id).first()
                 if att_pre and att_post:
                     learning_gains.append(att_post.percentage - att_pre.percentage)
-        avg_gain_pp = round(sum(learning_gains) / len(learning_gains), 1) if learning_gains else 0.0
+
+        has_assessment_data = len(learning_gains) > 0
+        if has_assessment_data:
+            avg_gain_pp = round(sum(learning_gains) / len(learning_gains), 1)
+            if avg_gain_pp >= 25.0:
+                learning_impact_level = "HIGH"
+            elif avg_gain_pp >= 10.0:
+                learning_impact_level = "MODERATE"
+            elif avg_gain_pp > 0.0:
+                learning_impact_level = "LOW"
+            elif avg_gain_pp == 0.0:
+                learning_impact_level = "NO CHANGE"
+            else:
+                learning_impact_level = "LOW"
+            learning_impact_label = f"{'+' if avg_gain_pp >= 0 else ''}{avg_gain_pp} pp"
+        else:
+            avg_gain_pp = 0.0
+            learning_impact_level = "NO DATA"
+            learning_impact_label = "No assessment data"
 
         # Skill gaps
         gaps = db.query(SkillGap).filter(
@@ -108,6 +162,19 @@ class PassportService:
 
         # Compliance
         comp = compliance_service.calculate_faculty_compliance(db, faculty_id)
+
+        # Academic Council Verification check
+        # Must ONLY appear if an actual stored institutional verification record exists
+        from app.models.teaching_impact import TeachingImpact
+        has_valid_cert = certificates and any(c.status == "VALID" for c in certificates)
+        has_verified_skill = len(validated_skills) > 0
+        has_verified_impact = db.query(TeachingImpact).filter(
+            TeachingImpact.faculty_id == faculty_id,
+            TeachingImpact.verified_at.isnot(None)
+        ).first() is not None
+
+        is_academic_council_verified = bool(has_valid_cert or has_verified_skill or has_verified_impact)
+        verification_badge_label = "Academic Council Verified" if is_academic_council_verified else "Institutional Record (Unverified)"
 
         # Timeline
         timeline = []
@@ -214,8 +281,16 @@ class PassportService:
             "workshops_completed": workshops_count,
             "total_training_hours": training_hours,
             "certificates_count": len(certificates),
-            "skills_acquired": sorted(list(skills_set)),
+            "skills_acquired": validated_skills if has_verified_skills else profile_skills,
+            "profile_skills": profile_skills,
+            "validated_skills": validated_skills,
+            "has_verified_skills": has_verified_skills,
             "average_learning_gain_pp": avg_gain_pp,
+            "has_assessment_data": has_assessment_data,
+            "learning_impact_level": learning_impact_level,
+            "learning_impact_label": learning_impact_label,
+            "is_academic_council_verified": is_academic_council_verified,
+            "verification_badge_label": verification_badge_label,
             "skill_gaps": skill_gaps_data,
             "next_recommended_training": next_rec,
             "compliance": comp,

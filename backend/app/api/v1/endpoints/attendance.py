@@ -53,26 +53,43 @@ def qr_checkin(checkin_in: AttendanceQRCheckinRequest, db: Session = Depends(get
             detail="Registration has been cancelled or revoked."
         )
 
-    # 4. Determine session
+    # 4. Determine session safely
     session = None
-    if checkin_in.session_id:
+    sess_id_int = None
+    if checkin_in.session_id is not None and str(checkin_in.session_id).strip():
+        try:
+            sess_id_int = int(checkin_in.session_id)
+        except (ValueError, TypeError):
+            sess_id_int = None
+
+    if sess_id_int is not None:
         session = db.query(EventSession).filter(
-            EventSession.id == checkin_in.session_id,
+            EventSession.id == sess_id_int,
             EventSession.event_id == checkin_in.event_id
         ).first()
 
+    safe_session_id = session.id if session else None
+
     # 5. Prevent duplicate attendance check-in for same session
     att_query = db.query(Attendance).filter(Attendance.event_id == checkin_in.event_id)
-    if checkin_in.session_id:
-        att_query = att_query.filter(Attendance.session_id == checkin_in.session_id)
+    if safe_session_id is not None:
+        att_query = att_query.filter(Attendance.session_id == safe_session_id)
     else:
         att_query = att_query.filter(Attendance.session_id.is_(None))
 
-    match_conds = [Attendance.registration_id == reg.id]
+    match_conds = []
+    if reg.id:
+        match_conds.append(Attendance.registration_id == reg.id)
     if reg.faculty_id:
         match_conds.append(Attendance.faculty_id == reg.faculty_id)
 
-    existing_att = att_query.filter(or_(*match_conds)).first()
+    if match_conds:
+        if len(match_conds) == 1:
+            att_query = att_query.filter(match_conds[0])
+        else:
+            att_query = att_query.filter(or_(*match_conds))
+
+    existing_att = att_query.first()
     if existing_att and existing_att.attendance_status == "PRESENT":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -83,7 +100,7 @@ def qr_checkin(checkin_in: AttendanceQRCheckinRequest, db: Session = Depends(get
     if not existing_att:
         rec = Attendance(
             event_id=checkin_in.event_id,
-            session_id=checkin_in.session_id,
+            session_id=safe_session_id,
             faculty_id=reg.faculty_id,
             registration_id=reg.id,
             attendance_status="PRESENT",
@@ -105,7 +122,7 @@ def qr_checkin(checkin_in: AttendanceQRCheckinRequest, db: Session = Depends(get
     p_name = reg.participant_name or (reg.faculty.full_name if reg.faculty else "Participant")
     f_code = reg.faculty_code or (reg.faculty.faculty_code if reg.faculty else "N/A")
     dept = reg.department or (reg.faculty.department.code if reg.faculty and reg.faculty.department else "CSE")
-    sess_title = session.title if session else "General Session"
+    sess_title = session.title if session else "Day 1 Morning (09:30 AM - 12:30 PM)"
 
     return {
         "success": True,
@@ -149,9 +166,18 @@ def manual_attendance(man_in: AttendanceManualRequest, db: Session = Depends(get
 
     status_val = man_in.attendance_status.upper() if man_in.attendance_status else "PRESENT"
 
-    query = db.query(Attendance).filter(Attendance.event_id == man_in.event_id)
+    session = None
     if man_in.session_id:
-        query = query.filter(Attendance.session_id == man_in.session_id)
+        session = db.query(EventSession).filter(
+            EventSession.id == man_in.session_id,
+            EventSession.event_id == man_in.event_id
+        ).first()
+
+    safe_session_id = session.id if session else None
+
+    query = db.query(Attendance).filter(Attendance.event_id == man_in.event_id)
+    if safe_session_id:
+        query = query.filter(Attendance.session_id == safe_session_id)
     else:
         query = query.filter(Attendance.session_id.is_(None))
 
@@ -166,7 +192,7 @@ def manual_attendance(man_in: AttendanceManualRequest, db: Session = Depends(get
     if not rec:
         rec = Attendance(
             event_id=man_in.event_id,
-            session_id=man_in.session_id,
+            session_id=safe_session_id,
             faculty_id=faculty.id if faculty else (reg.faculty_id if reg else None),
             registration_id=reg.id if reg else None,
             attendance_status=status_val,
@@ -217,9 +243,17 @@ def record_attendance(att_in: AttendanceRecordRequest, event_id: int, db: Sessio
     if not faculty and not reg:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty or registration not found.")
 
-    query = db.query(Attendance).filter(Attendance.event_id == event_id)
+    session = None
     if att_in.session_id:
-        query = query.filter(Attendance.session_id == att_in.session_id)
+        session = db.query(EventSession).filter(
+            EventSession.id == att_in.session_id,
+            EventSession.event_id == event_id
+        ).first()
+    safe_session_id = session.id if session else None
+
+    query = db.query(Attendance).filter(Attendance.event_id == event_id)
+    if safe_session_id:
+        query = query.filter(Attendance.session_id == safe_session_id)
     else:
         query = query.filter(Attendance.session_id.is_(None))
 
@@ -237,7 +271,7 @@ def record_attendance(att_in: AttendanceRecordRequest, event_id: int, db: Sessio
     if not rec:
         rec = Attendance(
             event_id=event_id,
-            session_id=att_in.session_id,
+            session_id=safe_session_id,
             faculty_id=faculty.id if faculty else (reg.faculty_id if reg else None),
             registration_id=reg.id if reg else None,
             attendance_status=status_val,
@@ -269,6 +303,14 @@ def record_bulk_attendance(bulk_in: AttendanceBulkRequest, db: Session = Depends
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found.")
 
+    bulk_session = None
+    if bulk_in.session_id:
+        bulk_session = db.query(EventSession).filter(
+            EventSession.id == bulk_in.session_id,
+            EventSession.event_id == bulk_in.event_id
+        ).first()
+    safe_bulk_session_id = bulk_session.id if bulk_session else None
+
     count = 0
     now = datetime.utcnow()
     for item in bulk_in.records:
@@ -277,10 +319,12 @@ def record_bulk_attendance(bulk_in: AttendanceBulkRequest, db: Session = Depends
         status_val = item.get("attendance_status", "PRESENT").upper()
         method_val = item.get("attendance_method", "MANUAL").upper()
 
-        query = db.query(Attendance).filter(
-            Attendance.event_id == bulk_in.event_id,
-            Attendance.session_id == bulk_in.session_id
-        )
+        query = db.query(Attendance).filter(Attendance.event_id == bulk_in.event_id)
+        if safe_bulk_session_id:
+            query = query.filter(Attendance.session_id == safe_bulk_session_id)
+        else:
+            query = query.filter(Attendance.session_id.is_(None))
+
         conds = []
         if reg_id:
             conds.append(Attendance.registration_id == reg_id)
@@ -293,7 +337,7 @@ def record_bulk_attendance(bulk_in: AttendanceBulkRequest, db: Session = Depends
         if not rec:
             rec = Attendance(
                 event_id=bulk_in.event_id,
-                session_id=bulk_in.session_id,
+                session_id=safe_bulk_session_id,
                 faculty_id=f_id,
                 registration_id=reg_id,
                 attendance_status=status_val,
@@ -324,7 +368,15 @@ def get_event_attendance(id: int, session_id: Optional[int] = None, db: Session 
 
     query = db.query(Attendance).filter(Attendance.event_id == id)
     if session_id:
-        query = query.filter(Attendance.session_id == session_id)
+        real_session = db.query(EventSession).filter(
+            EventSession.id == session_id,
+            EventSession.event_id == id
+        ).first()
+        if real_session:
+            query = query.filter(Attendance.session_id == real_session.id)
+        else:
+            # Fallback/dummy session when event has no sessions in DB
+            query = query.filter(or_(Attendance.session_id == session_id, Attendance.session_id.is_(None)))
     
     attendances = query.all()
 
@@ -348,7 +400,7 @@ def get_event_attendance(id: int, session_id: Optional[int] = None, db: Session 
             {
                 "id": a.id,
                 "session_id": a.session_id,
-                "session_title": a.session.title if a.session else "Session Check-in",
+                "session_title": a.session.title if a.session else ("Day 1 Morning (09:30 AM - 12:30 PM)" if not event.sessions else "General Session"),
                 "faculty_id": a.faculty_id,
                 "registration_id": a.registration_id,
                 "registration_code": a.registration.registration_code if a.registration else (f"REG-VU2026-{a.registration_id:04d}" if a.registration_id else "N/A"),

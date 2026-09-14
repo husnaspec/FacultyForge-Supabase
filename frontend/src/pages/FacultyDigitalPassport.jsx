@@ -107,23 +107,61 @@ export default function FacultyDigitalPassport() {
           </div>
 
           <div style={{ textAlign: 'right' }}>
-            <span
+            {(() => {
+              const status = passport.compliance?.status;
+              let bg = 'rgba(148, 163, 184, 0.15)';
+              let color = '#94a3b8';
+              let border = '1px solid rgba(148, 163, 184, 0.3)';
+              let text = status ? status.replace(/_/g, ' ') : 'PENDING EVALUATION';
+
+              if (status === 'COMPLIANT') {
+                bg = 'rgba(16, 185, 129, 0.15)';
+                color = '#34d399';
+                border = '1px solid rgba(16, 185, 129, 0.3)';
+                text = 'COMPLIANT';
+              } else if (status === 'ATTENTION_REQUIRED') {
+                bg = 'rgba(245, 158, 11, 0.15)';
+                color = '#fbbf24';
+                border = '1px solid rgba(245, 158, 11, 0.3)';
+                text = 'ATTENTION REQUIRED';
+              } else if (status === 'NON_COMPLIANT') {
+                bg = 'rgba(239, 68, 68, 0.15)';
+                color = '#f87171';
+                border = '1px solid rgba(239, 68, 68, 0.3)';
+                text = 'NON-COMPLIANT';
+              }
+
+              return (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    padding: '0.4rem 0.9rem',
+                    borderRadius: 'var(--radius-full)',
+                    background: bg,
+                    color: color,
+                    border: border,
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {text}
+                </span>
+              );
+            })()}
+            <p
               style={{
-                display: 'inline-block',
-                padding: '0.4rem 0.9rem',
-                borderRadius: 'var(--radius-full)',
-                background: passport.compliance?.status === 'COMPLIANT' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                color: passport.compliance?.status === 'COMPLIANT' ? '#34d399' : '#fbbf24',
-                border: passport.compliance?.status === 'COMPLIANT' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
-                fontSize: '0.8125rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                color: passport.is_academic_council_verified ? '#34d399' : 'var(--text-muted)',
+                marginTop: '0.375rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.25rem',
               }}
             >
-              {passport.compliance?.status || 'COMPLIANT'}
-            </span>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem' }}>
-              Academic Council Verified
+              {passport.is_academic_council_verified && <CheckCircle2 size={13} style={{ color: '#34d399' }} />}
+              <span>{passport.verification_badge_label || (passport.is_academic_council_verified ? 'Academic Council Verified' : 'Institutional Record (Unverified)')}</span>
             </p>
           </div>
         </div>
@@ -168,44 +206,105 @@ export default function FacultyDigitalPassport() {
 
       {/* Row 2: Skills Acquired & Learning Impact */}
       <div className="grid-2">
-        {/* Skills Acquired */}
+        {/* Skills Acquired & Validated vs Profile Skills */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Award size={18} style={{ color: 'var(--brand-primary)' }} />
-            <h3 style={{ fontSize: '1.125rem' }}>Skills Acquired & Validated</h3>
-          </div>
-          <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-            Demonstrated competencies verified through FDP assessments and certified programmes:
-          </p>
+          {passport.has_verified_skills && passport.validated_skills?.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Award size={18} style={{ color: 'var(--brand-primary)' }} />
+                <h3 style={{ fontSize: '1.125rem' }}>Skills Acquired & Validated</h3>
+              </div>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                Demonstrated competencies verified through FDP assessments and certified programmes:
+              </p>
 
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {passport.skills_acquired?.map((skill, i) => (
-              <span
-                key={i}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.375rem',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  padding: '0.35rem 0.75rem',
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  color: '#93c5fd',
-                  border: '1px solid rgba(59, 130, 246, 0.25)',
-                  borderRadius: 'var(--radius-md)',
-                }}
-              >
-                <CheckCircle2 size={13} style={{ color: '#60a5fa' }} />
-                <span>{skill}</span>
-              </span>
-            ))}
-          </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {passport.validated_skills.map((skill, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.375rem',
+                      fontSize: '0.8125rem',
+                      fontWeight: 600,
+                      padding: '0.35rem 0.75rem',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      color: '#93c5fd',
+                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <CheckCircle2 size={13} style={{ color: '#60a5fa' }} />
+                    <span>{skill}</span>
+                  </span>
+                ))}
+              </div>
+
+              {passport.profile_skills?.length > 0 && (
+                <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem' }}>
+                  <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Profile Skills (Self-Reported)
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                    {passport.profile_skills.map((skill, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '0.25rem 0.6rem',
+                          background: 'rgba(148, 163, 184, 0.08)',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 'var(--radius-sm)',
+                        }}
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <BookOpen size={18} style={{ color: 'var(--text-muted)' }} />
+                <h3 style={{ fontSize: '1.125rem' }}>Profile Skills</h3>
+              </div>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                Self-reported profile competencies declared upon onboarding (Unverified &bull; Pending FDP Validation):
+              </p>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {(passport.profile_skills?.length > 0 ? passport.profile_skills : passport.skills_acquired)?.map((skill, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.375rem',
+                      fontSize: '0.8125rem',
+                      fontWeight: 600,
+                      padding: '0.35rem 0.75rem',
+                      background: 'rgba(148, 163, 184, 0.08)',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <span>{skill}</span>
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Empirical Learning Gain */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={18} style={{ color: 'var(--color-success)' }} />
+            <TrendingUp size={18} style={{ color: passport.has_assessment_data ? 'var(--color-success)' : 'var(--text-muted)' }} />
             <h3 style={{ fontSize: '1.125rem' }}>Measurable Learning Impact</h3>
           </div>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
@@ -216,24 +315,65 @@ export default function FacultyDigitalPassport() {
             style={{
               padding: '1.25rem',
               borderRadius: 'var(--radius-md)',
-              background: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
+              background: passport.has_assessment_data ? 'rgba(16, 185, 129, 0.08)' : 'rgba(148, 163, 184, 0.06)',
+              border: passport.has_assessment_data ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid var(--border-subtle)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
             }}
           >
             <div>
-              <span style={{ fontSize: '2rem', fontWeight: 900, color: '#34d399' }}>
-                +{passport.average_learning_gain_pp} pp
+              <span
+                style={{
+                  fontSize: passport.has_assessment_data ? '2rem' : '1.35rem',
+                  fontWeight: 900,
+                  color: passport.has_assessment_data ? '#34d399' : 'var(--text-muted)',
+                }}
+              >
+                {passport.has_assessment_data
+                  ? (passport.learning_impact_label || `${passport.average_learning_gain_pp >= 0 ? '+' : ''}${passport.average_learning_gain_pp} pp`)
+                  : 'No assessment data'}
               </span>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                AVERAGE LEARNING GAIN (PERCENTAGE POINTS)
+                {passport.has_assessment_data
+                  ? 'AVERAGE LEARNING GAIN (PERCENTAGE POINTS)'
+                  : 'PRE/POST ASSESSMENT EVALUATION PENDING'}
               </p>
             </div>
-            <span className="badge badge-high" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#6ee7b7' }}>
-              Impact: HIGH
-            </span>
+            {(() => {
+              if (!passport.has_assessment_data) {
+                return (
+                  <span
+                    className="badge"
+                    style={{
+                      background: 'rgba(148, 163, 184, 0.15)',
+                      color: '#94a3b8',
+                      border: '1px solid rgba(148, 163, 184, 0.25)',
+                    }}
+                  >
+                    Impact: NO DATA
+                  </span>
+                );
+              }
+              const lvl = passport.learning_impact_level || 'LOW';
+              let bg = 'rgba(245, 158, 11, 0.15)';
+              let col = '#fbbf24';
+              if (lvl === 'HIGH') {
+                bg = 'rgba(16, 185, 129, 0.15)';
+                col = '#6ee7b7';
+              } else if (lvl === 'MODERATE') {
+                bg = 'rgba(59, 130, 246, 0.15)';
+                col = '#60a5fa';
+              } else if (lvl === 'NO CHANGE') {
+                bg = 'rgba(148, 163, 184, 0.15)';
+                col = '#cbd5e1';
+              }
+              return (
+                <span className="badge" style={{ background: bg, color: col }}>
+                  Impact: {lvl}
+                </span>
+              );
+            })()}
           </div>
         </div>
       </div>

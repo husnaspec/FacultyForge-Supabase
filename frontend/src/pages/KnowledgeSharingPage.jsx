@@ -17,7 +17,14 @@ import {
 export default function KnowledgeSharingPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [scheduled, setScheduled] = useState({});
+  const [scheduled, setScheduled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('knowledge_sharing_scheduled');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
   useEffect(() => {
     loadSharing();
@@ -36,7 +43,14 @@ export default function KnowledgeSharingPage() {
   };
 
   const handleSchedule = (idx, facultyName, topic) => {
-    setScheduled((prev) => ({ ...prev, [idx]: true }));
+    const key = `${facultyName}-${topic}`;
+    setScheduled((prev) => {
+      const next = { ...prev, [idx]: true, [key]: true };
+      try {
+        localStorage.setItem('knowledge_sharing_scheduled', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     setTimeout(() => {
       alert(`Colloquium session '${topic}' led by ${facultyName} has been queued for departmental calendar coordination.`);
     }, 150);
@@ -98,7 +112,7 @@ export default function KnowledgeSharingPage() {
       ) : (
         <div className="grid-2">
           {data?.recommendations?.map((r, idx) => {
-            const isScheduled = scheduled[idx];
+            const isScheduled = scheduled[idx] || scheduled[`${r.recommended_faculty_name}-${r.topic}`];
             return (
               <div
                 key={idx}
@@ -175,7 +189,7 @@ export default function KnowledgeSharingPage() {
                         borderRadius: '4px',
                       }}
                     >
-                      +{r.learning_gain_achieved}% Learning Gain
+                      +{r.learning_gain_achieved} pp Learning Gain
                     </span>
                   </div>
 

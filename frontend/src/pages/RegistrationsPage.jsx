@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from 'qrcode';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import StatusBadge from '../components/StatusBadge';
 import {
   UserCheck2, CheckCircle2, AlertCircle, QrCode,
@@ -41,14 +41,18 @@ export default function RegistrationsPage() {
 
   const loadOpenEvents = async () => {
     setLoading(true);
+    setError('');
     try {
       const all = await api.getEvents();
-      const available = all.filter((e) =>
-        ['REGISTRATION_OPEN', 'APPROVED', 'ONGOING'].includes(e.status)
+      const list = asArray(all, 'events');
+      const openStatuses = ['REGISTRATION_OPEN', 'APPROVED', 'OPEN', 'ACTIVE', 'ONGOING'];
+      const available = list.filter((e) =>
+        openStatuses.includes((e.status || '').toUpperCase())
       );
       setOpenEvents(available);
     } catch (err) {
       console.error('Failed to load events:', err);
+      setError(err.message || 'Failed to load open programmes from backend');
     } finally {
       setLoading(false);
     }
@@ -182,13 +186,22 @@ export default function RegistrationsPage() {
         </p>
       </div>
 
+      {error && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Programme Cards Grid */}
       <div className="grid-2">
         {loading ? (
           <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading available programmes...</div>
         ) : openEvents.length === 0 ? (
           <div className="card" style={{ gridColumn: 'span 2', textAlign: 'center', padding: '3rem' }}>
-            <p style={{ color: 'var(--text-muted)' }}>No programmes are currently open for registration.</p>
+            <p style={{ color: 'var(--text-muted)' }}>
+              {error ? 'Could not load programmes from backend.' : 'No programmes are currently open for registration.'}
+            </p>
           </div>
         ) : (
           openEvents.map((ev) => {
@@ -215,7 +228,7 @@ export default function RegistrationsPage() {
                     </span>
                   </div>
 
-                  <h3 style={{ fontSize: '1.125rem', marginBottom: '0.375rem' }}>{ev.title}</h3>
+                  <h3 style={{ fontSize: '1.125rem', marginBottom: '0.375rem' }}>{ev.title || ev.programme_title}</h3>
                   <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
                     Dept: {ev.department_name} &bull; Mode: {ev.delivery_mode} &bull; Duration: {ev.duration_hours} hrs
                   </p>

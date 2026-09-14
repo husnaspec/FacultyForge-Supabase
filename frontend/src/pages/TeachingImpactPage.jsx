@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
+import { api, asArray } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import {
@@ -16,6 +16,7 @@ import {
   FlaskConical,
   ShieldCheck,
   Award,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function TeachingImpactPage() {
@@ -27,16 +28,19 @@ export default function TeachingImpactPage() {
   const [availableSkills, setAvailableSkills] = useState([]);
   const [isCustomSkill, setIsCustomSkill] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [modalError, setModalError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [verifyingId, setVerifyingId] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
-    faculty_id: selectedFacultyId,
+    faculty_id: selectedFacultyId === 'ALL' ? 1 : selectedFacultyId,
     event_id: '',
-    skill_name: 'Generative AI',
-    application_type: 'CLASSROOM',
+    skill_name: 'ANSYS',
+    application_type: 'LAB',
     description: '',
     evidence_reference: '',
     self_rating: 4,
@@ -51,30 +55,41 @@ export default function TeachingImpactPage() {
     if (selectedFacultyId) {
       loadImpacts();
       loadFacultyContext(selectedFacultyId);
-      setFormData((prev) => ({ ...prev, faculty_id: selectedFacultyId }));
+      if (selectedFacultyId !== 'ALL') {
+        setFormData((prev) => ({ ...prev, faculty_id: selectedFacultyId }));
+      }
     }
   }, [selectedFacultyId]);
 
   const loadFacultyList = async () => {
     try {
       const facs = await api.getFacultyList();
-      setFacultyList(facs || []);
-      if (!selectedFacultyId && facs?.length > 0) {
-        setSelectedFacultyId(facs[0].id);
+      const list = asArray(facs, 'faculty', 'faculty_members');
+      setFacultyList(list);
+      if (list.length > 0) {
+        if (!selectedFacultyId || (selectedFacultyId !== 'ALL' && !list.some((f) => String(f.id) === String(selectedFacultyId)))) {
+          setSelectedFacultyId(list[0].id);
+        }
       }
     } catch (err) {
       console.error('Failed to load faculty list:', err);
+      setError(err.message || 'Failed to load faculty list');
     }
   };
 
   const loadFacultyContext = async (fId) => {
+    if (fId === 'ALL') {
+      setFacultyProgrammes([]);
+      setAvailableSkills([]);
+      return;
+    }
     try {
       const [progs, skills] = await Promise.all([
         api.getFacultyProgrammes(fId).catch(() => []),
         api.getVerifiedSkills(fId).catch(() => []),
       ]);
-      setFacultyProgrammes(progs || []);
-      setAvailableSkills(skills || []);
+      setFacultyProgrammes(asArray(progs, 'programmes'));
+      setAvailableSkills(asArray(skills, 'verified_skills'));
     } catch (err) {
       console.error('Failed to load faculty programmes/skills:', err);
     }
@@ -82,32 +97,51 @@ export default function TeachingImpactPage() {
 
   const loadImpacts = async () => {
     setLoading(true);
+    setError('');
     try {
-      const data = await api.getFacultyTeachingImpact(selectedFacultyId);
-      setImpactList(data || []);
+      let data;
+      if (selectedFacultyId === 'ALL') {
+        data = await api.getAllTeachingImpact();
+      } else {
+        data = await api.getFacultyTeachingImpact(selectedFacultyId);
+      }
+      setImpactList(asArray(data, 'impacts', 'records'));
     } catch (err) {
       console.error('Failed to load teaching impacts:', err);
+      setError(err.message || 'Failed to load teaching impacts');
     } finally {
       setLoading(false);
     }
   };
 
   const handleOpenAddModal = () => {
-    // Default to first programme or verified skill if available
-    const initialSkill = availableSkills.length > 0 ? (availableSkills[0].skill_name || availableSkills[0]) : 'Generative AI';
-    const initialProg = facultyProgrammes.length > 0 ? facultyProgrammes[0].id : '';
+    setModalError('');
+    const defaultFacId = selectedFacultyId === 'ALL' ? (facultyList[0]?.id || 1) : selectedFacultyId;
+    // Prefer ANSYS if present in faculty's skills or use first available
+    const ansysSkill = availableSkills.find(
+      (s) => (typeof s === 'string' ? s : s.skill_name)?.toLowerCase() === 'ansys'
+    );
+    const initialSkill = ansysSkill
+      ? (typeof ansysSkill === 'string' ? ansysSkill : ansysSkill.skill_name)
+      : (availableSkills.length > 0 ? (availableSkills[0].skill_name || availableSkills[0]) : 'ANSYS');
+
+    // Prefer International Mechanical Day or event 12/13 or first programme
+    const preferredProg = facultyProgrammes.find(
+      (p) => p.title?.toLowerCase().includes('mechanical') || p.id === 13 || p.id === 12
+    ) || facultyProgrammes[0];
+    const initialProg = preferredProg ? preferredProg.id : '';
 
     setFormData({
-      faculty_id: selectedFacultyId,
-      event_id: initialProg ? String(initialProg) : '',
-      skill_name: initialSkill,
-      application_type: 'CLASSROOM',
+      faculty_id: defaultFacId,
+      event_id: initialProg,
+      skill_name: typeof initialSkill === 'string' ? initialSkill : (initialSkill?.skill_name || 'ANSYS'),
+      application_type: 'LAB',
       description: '',
       evidence_reference: '',
       self_rating: 4,
       status: 'APPLIED',
     });
-    setIsCustomSkill(availableSkills.length === 0);
+    setIsCustomSkill(false);
     setShowAddModal(true);
   };
 
@@ -118,22 +152,29 @@ export default function TeachingImpactPage() {
 
   const handleRecordImpact = async (e) => {
     e.preventDefault();
+    setModalError('');
+
     const desc = formData.description?.trim();
     if (!desc) {
-      alert('Please describe how the skill was applied in teaching, lab, or research.');
+      setModalError('Please describe how the skill was applied in teaching, lab, or research.');
       return;
     }
     if (!formData.skill_name?.trim()) {
-      alert('Please enter or select a skill name.');
+      setModalError('Please enter or select a skill name.');
       return;
     }
 
     setSubmitting(true);
     try {
-      const targetFacId = formData.faculty_id || selectedFacultyId;
+      const targetFacId = formData.faculty_id || (selectedFacultyId === 'ALL' ? (facultyList[0]?.id || 1) : selectedFacultyId);
+      // Role enforcement: Faculty cannot self-verify
+      const statusVal = (isAdmin || isApprover)
+        ? (formData.status || 'APPLIED')
+        : (formData.status === 'PLANNED' ? 'PLANNED' : 'APPLIED');
+
       await api.recordTeachingImpact(targetFacId, {
         faculty_id: targetFacId,
-        event_id: formData.event_id ? parseInt(formData.event_id) : null,
+        event_id: formData.event_id ? parseInt(formData.event_id, 10) : null,
         skill_name: formData.skill_name.trim(),
         application_type: formData.application_type,
         description: desc,
@@ -141,19 +182,27 @@ export default function TeachingImpactPage() {
         evidence_reference: formData.evidence_reference?.trim() || null,
         evidence_url: formData.evidence_reference?.trim() || null,
         self_rating: parseFloat(formData.self_rating) || 4.0,
-        status: formData.status || 'APPLIED',
-        impact_status: formData.status || 'APPLIED',
+        status: statusVal,
+        impact_status: statusVal,
       });
 
       setShowAddModal(false);
-      // If submitted for currently viewed faculty, reload
-      if (targetFacId === selectedFacultyId) {
+      setSuccessMsg('Teaching impact recorded successfully!');
+      setTimeout(() => setSuccessMsg(''), 6000);
+
+      // Reload records without full page reload
+      if (selectedFacultyId === 'ALL' || targetFacId === selectedFacultyId) {
         await loadImpacts();
       } else {
         setSelectedFacultyId(targetFacId);
       }
     } catch (err) {
-      alert(err.message || 'Failed to record teaching impact');
+      console.error('Failed to record teaching impact:', err);
+      let displayError = err.message || 'Failed to record teaching impact';
+      if (err.status === 422 && Array.isArray(err.data?.detail)) {
+        displayError = 'Validation Error: ' + err.data.detail.map((d) => `${d.loc?.slice(1).join('.') || ''}: ${d.msg}`).join(', ');
+      }
+      setModalError(displayError);
     } finally {
       setSubmitting(false);
     }
@@ -203,11 +252,22 @@ export default function TeachingImpactPage() {
           </p>
         </div>
 
-        <button onClick={handleOpenAddModal} className="btn btn-primary btn-sm">
+        <button
+          onClick={handleOpenAddModal}
+          className="btn btn-primary btn-sm"
+          id="record-teaching-impact-header-btn"
+        >
           <Plus size={15} />
           <span>+ Record Teaching Impact</span>
         </button>
       </div>
+
+      {successMsg && (
+        <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', color: '#047857', padding: '0.75rem 1rem', borderRadius: '6px' }}>
+          <CheckCircle2 size={18} />
+          <span>{successMsg}</span>
+        </div>
+      )}
 
       {/* Visual Translational Pipeline */}
       <div
@@ -267,6 +327,13 @@ export default function TeachingImpactPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Faculty Selector & Stats */}
       <div className="card" style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '1rem 1.25rem', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1', minWidth: '260px', maxWidth: '400px' }}>
@@ -276,9 +343,13 @@ export default function TeachingImpactPage() {
           <select
             className="input"
             value={selectedFacultyId}
-            onChange={(e) => setSelectedFacultyId(parseInt(e.target.value))}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedFacultyId(val === 'ALL' ? 'ALL' : parseInt(val, 10));
+            }}
             style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}
           >
+            <option value="ALL">All Faculty (Institution-wide)</option>
             {facultyList.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.full_name} ({f.department_name || f.faculty_code})
@@ -290,6 +361,7 @@ export default function TeachingImpactPage() {
         <button
           onClick={handleOpenAddModal}
           className="btn btn-primary btn-sm"
+          id="record-teaching-impact-selector-btn"
           style={{ alignSelf: 'flex-end', marginBottom: '2px' }}
         >
           <Plus size={15} />
@@ -321,12 +393,17 @@ export default function TeachingImpactPage() {
         <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
           <FlaskConical size={40} style={{ color: 'var(--text-muted)', margin: '0 auto 0.875rem', display: 'block', opacity: 0.6 }} />
           <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.375rem' }}>
-            No teaching impact records submitted yet.
+            {error ? 'Could not load teaching impact records.' : 'No teaching impact records submitted yet.'}
           </h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', maxWidth: '540px', margin: '0 auto 1.5rem', lineHeight: 1.5 }}>
             Record how FDP learning was applied in teaching, research, laboratory or academic practice.
           </p>
-          <button onClick={handleOpenAddModal} className="btn btn-primary btn-sm" style={{ margin: '0 auto' }}>
+          <button
+            onClick={handleOpenAddModal}
+            className="btn btn-primary btn-sm"
+            id="record-teaching-impact-empty-btn"
+            style={{ margin: '0 auto' }}
+          >
             <Plus size={15} />
             <span>+ Record Teaching Impact</span>
           </button>
@@ -464,7 +541,31 @@ export default function TeachingImpactPage() {
 
       {/* Record Impact Modal */}
       {showAddModal && (
-        <Modal title="Record Teaching Impact" onClose={() => setShowAddModal(false)}>
+        <Modal
+          isOpen={showAddModal}
+          title="Record Teaching Impact"
+          onClose={() => setShowAddModal(false)}
+        >
+          {modalError && (
+            <div
+              className="alert alert-danger"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '1rem',
+                padding: '0.625rem 0.875rem',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid #ef4444',
+                color: '#b91c1c',
+                borderRadius: '6px',
+                fontSize: '0.8125rem',
+              }}
+            >
+              <AlertCircle size={16} />
+              <span>{modalError}</span>
+            </div>
+          )}
           <form onSubmit={handleRecordImpact} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Faculty Field */}
             <div>

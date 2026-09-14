@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 
 # ======================= DEPARTMENT SCHEMAS =======================
@@ -270,18 +270,18 @@ class AttendanceRecordRequest(BaseModel):
 class AttendanceQRCheckinRequest(BaseModel):
     event_id: int
     qr_token: str
-    session_id: Optional[int] = None
+    session_id: Optional[Union[int, str]] = None
 
 class AttendanceManualRequest(BaseModel):
     event_id: int
     registration_id: Optional[int] = None
     faculty_id: Optional[int] = None
-    session_id: Optional[int] = None
+    session_id: Optional[Union[int, str]] = None
     attendance_status: str = "PRESENT" # PRESENT, ABSENT
 
 class AttendanceBulkRequest(BaseModel):
     event_id: int
-    session_id: Optional[int] = None
+    session_id: Optional[Union[int, str]] = None
     records: List[Dict[str, Any]] # [{"faculty_id": 1, "attendance_status": "PRESENT"}]
 
 class AttendanceResponse(BaseModel):
@@ -413,6 +413,49 @@ class CertificateResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ParticipantEligibilityItem(BaseModel):
+    registration_id: int
+    faculty_id: Optional[int] = None
+    participant_name: str
+    faculty_code: Optional[str] = None
+    email: Optional[str] = None
+    registration_status: str
+    registration_status_pass: bool
+    attendance_percentage: float
+    attendance_pass: bool
+    attended_sessions: int
+    total_sessions: int
+    pre_status: str
+    pre_pass: bool
+    post_status: str
+    post_pass: bool
+    feedback_status: str
+    feedback_pass: bool
+    programme_status: str
+    programme_pass: bool
+    is_eligible: bool
+    already_issued: bool = False
+    certificate_code: Optional[str] = None
+    reason: str
+
+class EventEligibilityResponse(BaseModel):
+    event_id: int
+    event_code: str
+    event_title: str
+    total_participants: int
+    eligible_count: int
+    ineligible_count: int
+    pre_assessment_required: Optional[bool] = True
+    post_assessment_required: Optional[bool] = True
+    criteria_summary: Optional[str] = None
+    participants: List[ParticipantEligibilityItem]
+
+class CertificateGenerationResult(BaseModel):
+    generated_count: int
+    skipped_count: int
+    reasons: List[str]
+    certificates: List[CertificateResponse]
+
 class CertificateVerifyResponse(BaseModel):
     is_valid: bool
     certificate_code: str
@@ -494,6 +537,20 @@ class DigitalPassportResponse(BaseModel):
     career_goal: Optional[Dict[str, Any]] = None
     peer_mentors: Optional[List[Dict[str, Any]]] = None
     fdp_effectiveness_history: Optional[List[Dict[str, Any]]] = None
+
+    # Explicit Profile vs Verified Skills
+    profile_skills: Optional[List[str]] = []
+    validated_skills: Optional[List[str]] = []
+    has_verified_skills: Optional[bool] = False
+
+    # Learning Impact Details
+    has_assessment_data: Optional[bool] = False
+    learning_impact_level: Optional[str] = "NO DATA"
+    learning_impact_label: Optional[str] = "No assessment data"
+
+    # Academic Council Verification
+    is_academic_council_verified: Optional[bool] = False
+    verification_badge_label: Optional[str] = "Institutional Record (Unverified)"
 
 # ======================= AGENT & INTELLIGENCE SCHEMAS =======================
 class SkillGapItem(BaseModel):
@@ -655,16 +712,20 @@ class PeerMentorMatchItem(BaseModel):
 class PeerMentorResponse(BaseModel):
     faculty_id: int
     faculty_name: Optional[str] = None
-    skill_gap: str
+    skill_gap: Optional[str] = None
+    target_skill_gap: Optional[str] = None
+    message: Optional[str] = None
     mentor_matches: List[PeerMentorMatchItem]
 
 # 2. Skill Evidence
 class SkillEvidenceCreate(BaseModel):
+    faculty_id: Optional[int] = None
     skill_name: str
     evidence_type: str # ASSESSMENT, CERTIFICATE, PROJECT, TRAINER_EVALUATION, PRACTICAL_ACTIVITY, WORKSHOP_COMPLETION
     evidence_reference: str
     score: Optional[float] = None
-    verified: bool = True
+    verified: Optional[bool] = None
+    verification_status: Optional[str] = None # UNVERIFIED, PARTIALLY_VERIFIED, VERIFIED
     verified_by: Optional[str] = None
 
 class SkillEvidenceResponse(BaseModel):
@@ -675,6 +736,7 @@ class SkillEvidenceResponse(BaseModel):
     evidence_reference: str
     score: Optional[float] = None
     verified: bool
+    verification_status: Optional[str] = None
     verified_by: Optional[str] = None
     created_at: Optional[datetime] = None
 
