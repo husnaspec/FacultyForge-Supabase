@@ -321,20 +321,25 @@ def run():
         "event_id": event_id,
         "skill_name": "Generative AI",
         "application_type": "CLASSROOM",
-        "application_description": "Integrated LLM prompt debugging into B.Tech CSE Advanced Machine Learning laboratory curriculum.",
+        "application_description": f"Integrated LLM prompt debugging into B.Tech CSE Advanced Machine Learning laboratory curriculum (Event {event_id}).",
         "self_rating": 5,
         "impact_status": "VERIFIED"
     })
     assert st == 201, f"Record teaching impact failed: {st}, {impact_rec}"
     print(f"PASS: Teaching impact recorded and verified in classroom teaching!")
 
+    # Step 22.5: Mark Event Completed
+    st, comp_ev = api_call(f"/events/{event_id}", method="PUT", data={"status": "COMPLETED"})
+    assert st == 200, f"Complete event failed: {st}, {comp_ev}"
+
     # Step 23: Generate Certificate
     print("\n--- STEP 23: GENERATE CERTIFICATE ---")
-    st, cert_list = api_call(f"/events/{event_id}/generate-certificates", method="POST", data={
+    st, cert_res = api_call(f"/events/{event_id}/generate-certificates", method="POST", data={
         "faculty_ids": [veda_id]
     })
-    assert st == 200, f"Generate certificate failed: {st}, {cert_list}"
-    assert len(cert_list) >= 1, "Certificate was not generated for Dr. Veda"
+    assert st == 200, f"Generate certificate failed: {st}, {cert_res}"
+    cert_list = cert_res.get("certificates", []) if isinstance(cert_res, dict) else cert_res
+    assert len(cert_list) >= 1, f"Certificate was not generated for Dr. Veda: {cert_res}"
     cert = cert_list[0]
     cert_code = cert["certificate_code"]
     cert_tok = cert["verification_token"]
